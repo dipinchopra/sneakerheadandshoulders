@@ -165,6 +165,7 @@ class ShoeCleanerScene extends Phaser.Scene {
 
   handleCanvasPointerUp = () => {
     this.stopCleaning()
+    this.releaseTool()
   }
 
   getCanvasPointer(event) {
@@ -188,6 +189,30 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.toolLabel.setText(`${tool === 'brush' ? 'Brush' : 'Sponge'} selected`)
     this.brushCursor.setTexture(tool === 'brush' ? 'brush' : 'sponge')
     this.updateToolVisuals()
+  }
+
+  pressTool() {
+    if (!this.brushCursor.visible) return
+    this.tweens.killTweensOf(this.brushCursor)
+    this.tweens.add({
+      targets: this.brushCursor,
+      scale: 0.15,
+      angle: this.tool === 'brush' ? -8 : 5,
+      duration: 90,
+      ease: 'Quad.easeOut',
+    })
+  }
+
+  releaseTool() {
+    if (!this.brushCursor) return
+    this.tweens.killTweensOf(this.brushCursor)
+    this.tweens.add({
+      targets: this.brushCursor,
+      scale: 0.182,
+      angle: 0,
+      duration: 150,
+      ease: 'Back.easeOut',
+    })
   }
 
   updateToolVisuals() {
@@ -223,6 +248,7 @@ class ShoeCleanerScene extends Phaser.Scene {
     const sound = this.tool === 'sponge' ? this.bubblesSound : this.cleaningSound
     if (!sound.isPlaying) sound.play()
     this.lastPointer = { worldX: pointer.worldX, worldY: pointer.worldY }
+    this.pressTool()
     this.foamTimer = this.time.addEvent({
       delay: 90,
       loop: true,

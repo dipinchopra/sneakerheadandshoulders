@@ -24,6 +24,7 @@ body {
   position: fixed;
   inset: 0;
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app,
@@ -59,6 +60,14 @@ body {
   background: transparent;
   pointer-events: auto;
   cursor: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#control-overlay button:focus,
+#control-overlay button:active {
+  outline: none;
+  box-shadow: none;
 }
 
 #brush-control { left: 21%; bottom: 9%; }
