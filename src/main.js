@@ -6,19 +6,20 @@ const HEIGHT = 1024
 const SHOE_SIZE = 500
 const SHOE_X = WIDTH / 2
 const SHOE_Y = 480
+const ASSET_BASE = import.meta.env.BASE_URL
 
 class ShoeCleanerScene extends Phaser.Scene {
   preload() {
-    this.load.image('background', '/assets/background.jpg')
-    this.load.image('logo', '/assets/logo-browser.png')
-    this.load.image('dirty', '/assets/dirty.png')
-    this.load.image('clean', '/assets/clean.png')
-    this.load.image('brush', '/assets/brush.png')
-    this.load.image('sponge', '/assets/spong.png')
-    this.load.image('bubbles', '/assets/bubbles.png')
-    this.load.audio('cleaningSound', '/assets/audio/shoe-cleaning-trimmed.wav')
-    this.load.audio('bubblesSound', '/assets/audio/bubbles-browser.wav')
-    this.load.audio('successSound', '/assets/audio/success.wav')
+    this.load.image('background', `${ASSET_BASE}assets/background.jpg`)
+    this.load.image('logo', `${ASSET_BASE}assets/logo-browser.png`)
+    this.load.image('dirty', `${ASSET_BASE}assets/dirty.png`)
+    this.load.image('clean', `${ASSET_BASE}assets/clean.png`)
+    this.load.image('brush', `${ASSET_BASE}assets/brush.png`)
+    this.load.image('sponge', `${ASSET_BASE}assets/spong.png`)
+    this.load.image('bubbles', `${ASSET_BASE}assets/bubbles.png`)
+    this.load.audio('cleaningSound', `${ASSET_BASE}assets/audio/shoe-cleaning-trimmed.wav`)
+    this.load.audio('bubblesSound', `${ASSET_BASE}assets/audio/bubbles-browser.wav`)
+    this.load.audio('successSound', `${ASSET_BASE}assets/audio/success.wav`)
   }
 
   create() {
