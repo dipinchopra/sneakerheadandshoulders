@@ -83,7 +83,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: key === 'gameplay' ? 0.18 : 0.3 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.18 })
     this.music.play()
   }
 
@@ -137,6 +137,15 @@ class LoadingScene extends Phaser.Scene {
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene') }
 
+  addPressFeedback(button) {
+    button.on('pointerdown', () => {
+      const { scaleX, scaleY } = button
+      this.tweens.killTweensOf(button)
+      this.tweens.add({ targets: button, scaleX: scaleX * 0.91, scaleY: scaleY * 0.91, duration: 65, yoyo: true, ease: 'Quad.easeOut' })
+    })
+    return button
+  }
+
   create() {
     this.audio = new AudioManager(this)
     this.roundIndex = 0
@@ -163,8 +172,9 @@ class GameScene extends Phaser.Scene {
     // Browsers unlock audio on the first touch/click, so retry the start music then.
     startBackground.on('pointerdown', () => this.audio.playMusic('menu'))
     this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
-    this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
+    const play = this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
       .on('pointerdown', () => { this.audio.playClick(); this.startRound(0) })
+    this.addPressFeedback(play)
     this.add.image(545, 45, 'close').setDisplaySize(34, 34)
   }
 
@@ -200,6 +210,7 @@ class GameScene extends Phaser.Scene {
     this.add.image(WIDTH / 2, HEIGHT / 2, 'gameplayBg').setDisplaySize(WIDTH, HEIGHT)
     this.pauseButton = this.add.image(530, 46, 'gameplayPause').setDisplaySize(44, 44).setInteractive()
       .on('pointerdown', () => { this.audio.playClick(); this.openPause() })
+    this.addPressFeedback(this.pauseButton)
     this.progressBg = this.add.image(WIDTH / 2, 142, 'progressEmpty').setDisplaySize(430, 42)
     this.progressFull = this.add.image(73, 142, 'progressFull').setOrigin(0, 0.5).setDisplaySize(430, 42)
     this.progressFull.setCrop(0, 0, 0, 88)
@@ -215,6 +226,8 @@ class GameScene extends Phaser.Scene {
     this.spongeButton = this.add.image(385, 850, 'sponge').setScale(0.16)
     this.brushButton.setInteractive().on('pointerdown', () => this.selectTool('brush'))
     this.spongeButton.setInteractive().on('pointerdown', () => this.selectTool('sponge'))
+    this.addPressFeedback(this.brushButton)
+    this.addPressFeedback(this.spongeButton)
     this.tool = 'sponge'
     this.toolLabel = this.add.text(WIDTH / 2, 950, 'Sponge selected', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
     this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(6).setVisible(false)
@@ -341,6 +354,8 @@ class GameScene extends Phaser.Scene {
     const restart = this.add.image(WIDTH / 2, 730, 'resultRestart').setDisplaySize(240, 74).setInteractive()
     restart.on('pointerdown', () => { this.audio.playClick(); this.startRound(this.roundIndex) })
     this.resultOverlay.add([next, restart])
+    this.addPressFeedback(next)
+    this.addPressFeedback(restart)
   }
 
   addCompletionConfetti() {
@@ -393,6 +408,10 @@ class GameScene extends Phaser.Scene {
     const close = this.add.image(465, 225, 'pauseClose').setDisplaySize(34, 34).setInteractive()
     close.on('pointerdown', () => this.resumeGame())
     this.pauseOverlay.add([restart, quit, toggle, close])
+    this.addPressFeedback(restart)
+    this.addPressFeedback(quit)
+    this.addPressFeedback(toggle)
+    this.addPressFeedback(close)
   }
 
   resumeGame() {
@@ -440,6 +459,9 @@ class GameScene extends Phaser.Scene {
       this.showStart()
     })
     this.quitOverlay.add([close, cancel, quit])
+    this.addPressFeedback(close)
+    this.addPressFeedback(cancel)
+    this.addPressFeedback(quit)
   }
 
   resize() {
