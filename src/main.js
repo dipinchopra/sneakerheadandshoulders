@@ -17,8 +17,8 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.load.image('brush', `${ASSET_BASE}assets/brush.png`)
     this.load.image('sponge', `${ASSET_BASE}assets/spong.png`)
     this.load.image('bubbles', `${ASSET_BASE}assets/bubbles.png`)
-    this.load.audio('cleaningSound', `${ASSET_BASE}assets/audio/shoe-cleaning-trimmed.wav`)
-    this.load.audio('bubblesSound', `${ASSET_BASE}assets/audio/bubbles-browser.wav`)
+    this.load.audio('cleaningSound', `${ASSET_BASE}assets/audio/shoe-cleaning-compressed.wav`)
+    this.load.audio('bubblesSound', `${ASSET_BASE}assets/audio/bubbles-compressed.wav`)
     this.load.audio('successSound', `${ASSET_BASE}assets/audio/success.wav`)
   }
 
