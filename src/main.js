@@ -83,7 +83,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: 0.18 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.14 })
     this.music.play()
   }
 
