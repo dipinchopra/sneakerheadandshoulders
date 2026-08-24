@@ -24,6 +24,7 @@ class ShoeCleanerScene extends Phaser.Scene {
 
   create() {
     this.cleanedAmount = 0
+    this.gameFinished = false
     this.lastBrushPoint = null
     this.tool = 'sponge'
     this.foamStamps = 0
@@ -112,6 +113,7 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.foamClouds.forEach((cloud) => cloud.destroy())
     this.foamClouds = []
     this.cleanedAmount = 0
+    this.gameFinished = false
     this.lastBrushPoint = null
     this.foamStamps = 0
     this.progressFill.width = 0
@@ -250,7 +252,7 @@ class ShoeCleanerScene extends Phaser.Scene {
   }
 
   scrub(pointer, isNewStroke) {
-    if (!pointer) return
+    if (!pointer || this.gameFinished) return
     const localX = Phaser.Math.Clamp((pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     const localY = Phaser.Math.Clamp((pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     if (this.tool === 'sponge') {
@@ -356,6 +358,8 @@ class ShoeCleanerScene extends Phaser.Scene {
   }
 
   finishCleaning() {
+    if (this.gameFinished) return
+    this.gameFinished = true
     this.stopCleaning()
     this.foamClouds.forEach((cloud) => cloud.destroy())
     this.foamClouds = []
