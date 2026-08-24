@@ -6,442 +6,399 @@ const HEIGHT = 1024
 const SHOE_SIZE = 500
 const SHOE_X = WIDTH / 2
 const SHOE_Y = 480
-const ASSET_BASE = import.meta.env.BASE_URL
+const BASE = import.meta.env.BASE_URL
+const asset = (path) => `${BASE}${path.split('/').map(encodeURIComponent).join('/')}`
+new FontFace('Mochiy Pop One', `url(${asset('assets/UI Assets/Font/Mochiy_Pop_One/MochiyPopOne-Regular.ttf')})`).load()
+  .then((font) => document.fonts.add(font))
 
-class ShoeCleanerScene extends Phaser.Scene {
+const shoes = [1, 2, 3, 4].map((number) => ({
+  clean: asset(`assets/Art Assets/Shoes/${number}./clean.png`),
+  dirty: asset(`assets/Art Assets/Shoes/${number}./dirty.png`),
+}))
+
+const files = {
+  loadingBg: 'assets/UI Assets/Loading Screen/loading bg.png',
+  loadingLogo: 'assets/UI Assets/Loading Screen/logo.png',
+  loadingEmpty: 'assets/UI Assets/Loading Screen/Loading Bar Empty.png',
+  loadingFull: 'assets/UI Assets/Loading Screen/Loading Bar Full.png',
+  startBg: 'assets/UI Assets/Game Start/game start bg.png',
+  startLogo: 'assets/UI Assets/Game Start/logo.png',
+  play: 'assets/UI Assets/Game Start/Play Button.png',
+  close: 'assets/UI Assets/Game Start/Close.png',
+  gameplayBg: 'assets/UI Assets/Gameplay/image 79.png',
+  gameplayPause: 'assets/UI Assets/Gameplay/Group 1079.png',
+  progressEmpty: 'assets/UI Assets/Gameplay/Progress Bar Empty.png',
+  progressFull: 'assets/UI Assets/Gameplay/Progress Bar Full.png',
+  pauseBg: 'assets/UI Assets/Game Modal/Menu background.png',
+  pauseLogo: 'assets/UI Assets/Game Modal/logo.png',
+  pauseClose: 'assets/UI Assets/Game Modal/Close.png',
+  pauseRestart: 'assets/UI Assets/Game Modal/Restart.png',
+  pauseQuit: 'assets/UI Assets/Game Modal/Quit.png',
+  quitBg: 'assets/UI Assets/Game Quit popup/Menu background.png',
+  quitClose: 'assets/UI Assets/Game Quit popup/Close.png',
+  quitCancel: 'assets/UI Assets/Game Quit popup/Cancel Button.png',
+  quitConfirm: 'assets/UI Assets/Game Quit popup/Quit.png',
+  resultBg: 'assets/UI Assets/Game Result/Result Background.png',
+  resultLogo: 'assets/UI Assets/Game Result/logo.png',
+  resultClose: 'assets/UI Assets/Game Result/Close.png',
+  resultNext: 'assets/UI Assets/Game Result/Next Round.png',
+  resultRestart: 'assets/UI Assets/Game Result/Restart.png',
+  brush: 'assets/Art Assets/brush.png',
+  sponge: 'assets/Art Assets/spong.png',
+  bubbles: 'assets/Art Assets/bubbles.png',
+  sparkle: 'assets/Art Assets/sparkle.png',
+}
+
+const audioFiles = {
+  menu: 'assets/audio/menu-bg-v2.wav',
+  gameplay: 'assets/audio/gameplay-bg-v2.wav',
+  click: 'assets/audio/ui-click-v2.wav',
+  cleaning: 'assets/audio/shoe-cleaning-v2.wav',
+  bubbles: 'assets/audio/bubbles-v2.wav',
+  success: 'assets/audio/success-v2.wav',
+}
+
+class AudioManager {
+  constructor(scene) {
+    this.scene = scene
+    this.enabled = true
+    this.music = null
+  }
+
+  sound(key, config = {}) {
+    const sound = this.scene.sound.add(key, config)
+    sound.setMute(!this.enabled)
+    return sound
+  }
+
+  playClick() {
+    if (this.enabled) this.scene.sound.play('click', { volume: 0.55 })
+  }
+
+  setEnabled(enabled) {
+    this.enabled = enabled
+    this.scene.sound.setMute(!enabled)
+  }
+
+  playMusic(key) {
+    if (this.music?.key === key && this.music.isPlaying) return
+    this.stopMusic()
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.32 })
+    this.music.play()
+  }
+
+  stopMusic() {
+    if (this.music) {
+      this.music.stop()
+      this.music.destroy()
+      this.music = null
+    }
+  }
+}
+
+class LoadingScene extends Phaser.Scene {
+  constructor() { super('LoadingScene') }
+
   preload() {
-    this.load.image('background', `${ASSET_BASE}assets/background.jpg`)
-    this.load.image('logo', `${ASSET_BASE}assets/logo-browser.png`)
-    this.load.image('dirty', `${ASSET_BASE}assets/dirty.png`)
-    this.load.image('clean', `${ASSET_BASE}assets/clean.png`)
-    this.load.image('brush', `${ASSET_BASE}assets/brush.png`)
-    this.load.image('sponge', `${ASSET_BASE}assets/spong.png`)
-    this.load.image('bubbles', `${ASSET_BASE}assets/bubbles.png`)
-    this.load.audio('cleaningSound', `${ASSET_BASE}assets/audio/shoe-cleaning-compressed.wav`)
-    this.load.audio('bubblesSound', `${ASSET_BASE}assets/audio/bubbles-compressed.wav`)
-    this.load.audio('successSound', `${ASSET_BASE}assets/audio/success.wav`)
+    this.load.image('loadingBg', asset(files.loadingBg))
+    this.load.image('loadingLogo', asset(files.loadingLogo))
+    this.load.image('loadingEmpty', asset(files.loadingEmpty))
+    this.load.image('loadingFull', asset(files.loadingFull))
   }
 
   create() {
+    this.add.image(WIDTH / 2, HEIGHT / 2, 'loadingBg').setDisplaySize(WIDTH, HEIGHT)
+    this.add.image(WIDTH / 2, 350, 'loadingLogo').setDisplaySize(260, 260)
+    this.add.image(WIDTH / 2, 785, 'loadingEmpty').setDisplaySize(430, 42)
+    this.loadingFill = this.add.image(73, 785, 'loadingFull').setOrigin(0, 0.5).setDisplaySize(430, 42)
+    this.loadingFill.setCrop(0, 0, 0, 88)
+    this.loadingText = this.add.text(WIDTH / 2, 735, 'Loading...', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff' }).setOrigin(0.5)
+    this.percentText = this.add.text(WIDTH / 2, 830, '0%', { fontFamily: 'Mochiy Pop One', fontSize: '20px', color: '#fff' }).setOrigin(0.5)
+    this.loadAssets()
+  }
+
+  loadAssets() {
+    Object.entries(files).forEach(([key, path]) => {
+      if (!this.textures.exists(key)) this.load.image(key, asset(path))
+    })
+    shoes.forEach((shoe, index) => {
+      this.load.image(`shoe${index}Clean`, shoe.clean)
+      this.load.image(`shoe${index}Dirty`, shoe.dirty)
+    })
+    Object.entries(audioFiles).forEach(([key, path]) => this.load.audio(key, asset(path)))
+    this.load.on('progress', (value) => {
+      const percent = Math.floor(value * 100)
+      this.percentText.setText(`${percent}%`)
+      this.loadingFill.setCrop(0, 0, 924 * value, 88)
+    })
+    this.load.once('complete', () => this.scene.start('GameScene'))
+    this.load.start()
+  }
+}
+
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene') }
+
+  create() {
+    this.audio = new AudioManager(this)
+    this.roundIndex = 0
+    this.state = 'start'
+    this.soundEnabled = true
+    this.showStart()
+    this.input.on('pointerup', () => this.releaseCleaning())
+    this.scale.on('resize', this.resize, this)
+    this.resize(this.scale)
+  }
+
+  clearScene() {
+    this.input.off('pointerdown', this.beginCleaning, this)
+    this.input.off('pointermove', this.moveCleaning, this)
+    this.events.off('update', this.updateGame, this)
+    this.children.removeAll(true)
+  }
+
+  showStart() {
+    this.clearScene()
+    this.state = 'start'
+    this.audio.playMusic('menu')
+    this.add.image(WIDTH / 2, HEIGHT / 2, 'startBg').setDisplaySize(WIDTH, HEIGHT)
+    this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
+    this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
+      .on('pointerdown', () => { this.audio.playClick(); this.startRound(0) })
+    this.add.image(545, 45, 'close').setDisplaySize(34, 34)
+  }
+
+  startRound(index) {
+    this.roundIndex = index
+    this.clearScene()
+    this.state = 'gameplay'
     this.cleanedAmount = 0
-    this.gameFinished = false
+    this.startTime = this.time.now
+    this.pausedAt = 0
+    this.pauseStartedAt = 0
     this.lastBrushPoint = null
-    this.tool = 'sponge'
-    this.foamStamps = 0
     this.foamClouds = []
-    this.foamTimer = null
-    this.lastPointer = null
+    this.foamCoverage = 0
     this.isPointerHeld = false
-    this.cursorFrame = null
-    this.pendingPointer = null
-    this.progressCheckTimer = 0
-    this.createBackground()
-    this.createProgress()
-    this.createShoe()
-    this.createControls()
-    this.createAudio()
-    this.createBrushCursor()
-    this.scale.on('resize', this.handleResize, this)
-    this.game.canvas.addEventListener('pointerdown', this.handleCanvasPointerDown)
-    this.game.canvas.addEventListener('pointermove', this.handleCanvasPointerMove)
-    this.game.canvas.addEventListener('pointerup', this.handleCanvasPointerUp)
-    this.game.canvas.addEventListener('pointercancel', this.handleCanvasPointerUp)
-    this.handleResize(this.scale)
+    this.audio.playMusic('gameplay')
+    this.createGameplay()
   }
 
-  createBackground() {
-    this.add.image(WIDTH / 2, HEIGHT / 2, 'background')
-      .setDisplaySize(768, HEIGHT)
-      .setDepth(-2)
-    this.add.image(SHOE_X, 62, 'logo').setDisplaySize(220, 100)
-    this.refreshButton = this.add.text(WIDTH - 36, 48, '↻', {
-      color: '#f7f1e8', fontFamily: 'Arial, sans-serif', fontSize: '36px',
-    }).setOrigin(0.5).setDepth(4)
-    this.status = this.add.text(SHOE_X, 112, 'Scrub the dirt away', {
-      color: '#b9d3c8', fontFamily: 'Arial, sans-serif', fontSize: '20px',
-    }).setOrigin(0.5)
-  }
-
-  createProgress() {
-    this.add.rectangle(88, 152, 400, 18, 0x0e292d).setOrigin(0)
-    this.progressFill = this.add.rectangle(88, 152, 0, 18, 0xf7d36b).setOrigin(0)
-    this.progressLabel = this.add.text(288, 182, '0% clean', {
-      color: '#b9d3c8', fontFamily: 'Arial, sans-serif', fontSize: '15px',
-    }).setOrigin(0.5)
-  }
-
-  createShoe() {
-    this.cleanShoe = this.add.image(SHOE_X, SHOE_Y, 'clean').setDisplaySize(SHOE_SIZE, SHOE_SIZE)
-    this.dirtCanvas = this.textures.createCanvas('dirtLayer', 1024, 1024)
-    this.dirtCanvas.getContext().drawImage(this.textures.get('dirty').getSourceImage(), 0, 0)
+  createGameplay() {
+    this.add.image(WIDTH / 2, HEIGHT / 2, 'gameplayBg').setDisplaySize(WIDTH, HEIGHT)
+    this.pauseButton = this.add.image(530, 46, 'gameplayPause').setDisplaySize(44, 44).setInteractive()
+      .on('pointerdown', () => { this.audio.playClick(); this.openPause() })
+    this.progressBg = this.add.image(WIDTH / 2, 142, 'progressEmpty').setDisplaySize(430, 42)
+    this.progressFull = this.add.image(73, 142, 'progressFull').setOrigin(0, 0.5).setDisplaySize(430, 42)
+    this.progressFull.setCrop(0, 0, 0, 88)
+    this.progressLabel = this.add.text(WIDTH / 2, 142, '0% Clean', { fontFamily: 'Mochiy Pop One', fontSize: '15px', color: '#101010' }).setOrigin(0.5)
+    this.cleanShoe = this.add.image(SHOE_X, SHOE_Y, `shoe${this.roundIndex}Clean`).setDisplaySize(SHOE_SIZE, SHOE_SIZE)
+    this.dirtCanvas = this.textures.createCanvas(`dirt-${Date.now()}`, 1024, 1024)
+    this.dirtCanvas.getContext().drawImage(this.textures.get(`shoe${this.roundIndex}Dirty`).getSourceImage(), 0, 0, 1024, 1024)
     this.dirtCanvas.refresh()
     this.initialDirtPixels = this.countOpaquePixels(this.dirtCanvas)
-    this.dirtyShoe = this.add.image(SHOE_X, SHOE_Y, 'dirtLayer').setDisplaySize(SHOE_SIZE, SHOE_SIZE)
-    this.foamCanvas = this.textures.createCanvas('foamLayer', 1024, 1024)
-    this.foamShoe = this.add.image(SHOE_X, SHOE_Y, 'foamLayer')
-      .setDisplaySize(SHOE_SIZE, SHOE_SIZE)
-      .setAlpha(0)
-    this.dirtyShoe.setInteractive({
-      hitArea: new Phaser.Geom.Rectangle(0, 0, 1024, 1024),
-      hitAreaCallback: Phaser.Geom.Rectangle.Contains,
-    })
-  }
-
-  createControls() {
-    this.brushButton = this.add.image(205, 850, 'brush')
-    this.spongeButton = this.add.image(371, 850, 'sponge')
-    document.querySelector('#brush-control').addEventListener('click', () => this.selectTool('brush'))
-    document.querySelector('#sponge-control').addEventListener('click', () => this.selectTool('sponge'))
-    document.querySelector('#refresh-control').addEventListener('click', () => this.resetGame())
-    this.toolLabel = this.add.text(SHOE_X, 942, 'Sponge selected', {
-      color: '#f7f1e8', fontFamily: 'Arial, sans-serif', fontSize: '18px',
-    }).setOrigin(0.5)
-    this.updateToolVisuals()
-  }
-
-  createAudio() {
-    this.cleaningSound = this.sound.add('cleaningSound', { loop: true, volume: 0.35 })
-    this.bubblesSound = this.sound.add('bubblesSound', { loop: true, volume: 0.35 })
-    this.successSound = this.sound.add('successSound', { volume: 0.6 })
-  }
-
-  resetGame() {
-    this.stopCleaning()
-    this.foamClouds.forEach((cloud) => cloud.destroy())
+    this.dirtyShoe = this.add.image(SHOE_X, SHOE_Y, this.dirtCanvas.key).setDisplaySize(SHOE_SIZE, SHOE_SIZE)
     this.foamClouds = []
-    this.cleanedAmount = 0
-    this.gameFinished = false
-    this.lastBrushPoint = null
-    this.foamStamps = 0
-    this.progressFill.width = 0
-    this.progressLabel.setText('0% clean')
-    this.status.setText('Apply foam with the sponge')
-    this.dirtCanvas.getContext().clearRect(0, 0, 1024, 1024)
-    this.dirtCanvas.getContext().drawImage(this.textures.get('dirty').getSourceImage(), 0, 0, 1024, 1024)
-    this.dirtCanvas.refresh()
-    this.foamCanvas.getContext().clearRect(0, 0, 1024, 1024)
-    this.foamCanvas.refresh()
-    this.dirtyShoe.setVisible(true)
-    this.cleanShoe.setVisible(true)
+    this.brushButton = this.add.image(190, 850, 'brush').setScale(0.16)
+    this.spongeButton = this.add.image(385, 850, 'sponge').setScale(0.16)
+    this.brushButton.setInteractive().on('pointerdown', () => this.selectTool('brush'))
+    this.spongeButton.setInteractive().on('pointerdown', () => this.selectTool('sponge'))
     this.tool = 'sponge'
-    this.brushCursor.setTexture('sponge').setVisible(false)
-    this.toolLabel.setText('Sponge selected')
+    this.toolLabel = this.add.text(WIDTH / 2, 950, 'Sponge selected', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
+    this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(6).setVisible(false)
     this.updateToolVisuals()
-    this.children.list
-      .filter((child) => child !== this.dirtyShoe && child !== this.cleanShoe && child !== this.foamShoe && child !== this.refreshButton && child.type === 'Text' && (child.text === 'CLEAN!' || child.text === 'Perfect!'))
-      .forEach((child) => child.destroy())
+    this.cleaningSound = this.audio.sound('cleaning', { loop: true, volume: 0.3 })
+    this.bubblesSound = this.audio.sound('bubbles', { loop: true, volume: 0.3 })
+    this.events.on('update', this.updateGame, this)
+    this.input.on('pointerdown', this.beginCleaning, this)
+    this.input.on('pointermove', this.moveCleaning, this)
   }
 
-  createBrushCursor() {
-    this.brushCursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(5).setVisible(false)
-  }
-
-  handleCanvasPointerDown = (event) => {
-    const pointer = this.getCanvasPointer(event)
-    this.moveBrush(pointer)
-    if (this.isPointInToolButton(pointer, this.brushButton)) {
-      this.selectTool('brush')
-      return
-    }
-    if (this.isPointInToolButton(pointer, this.spongeButton)) {
-      this.selectTool('sponge')
-      return
-    }
-    if (this.isPointInRefreshButton(pointer)) {
-      this.resetGame()
-      return
-    }
-    this.startCleaning(pointer)
-  }
-
-  handleCanvasPointerMove = (event) => {
-    const pointer = this.getCanvasPointer(event)
-    pointer.isDown = this.isPointerHeld || event.buttons > 0
-    this.pendingPointer = pointer
-    if (this.cursorFrame) return
-    this.cursorFrame = requestAnimationFrame(() => {
-      this.cursorFrame = null
-      if (this.pendingPointer) this.moveBrush(this.pendingPointer)
-    })
-  }
-
-  handleCanvasPointerUp = () => {
-    this.stopCleaning()
-    this.releaseTool()
-  }
-
-  getCanvasPointer(event) {
-    const bounds = this.game.canvas.getBoundingClientRect()
-    return {
-      worldX: (event.clientX - bounds.left) / bounds.width * WIDTH,
-      worldY: (event.clientY - bounds.top) / bounds.height * HEIGHT,
-    }
-  }
-
-  isPointInToolButton(pointer, button) {
-    return Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, button.x, button.y) < 105
-  }
-
-  isPointInRefreshButton(pointer) {
-    return Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, WIDTH - 36, 48) < 42
+  updateGame(_time, delta) {
+    if (this.state !== 'gameplay') return
+    this.elapsed = Math.max(0, this.time.now - this.startTime - this.pausedAt)
+    if (this.isPointerHeld && this.lastPointer) this.scrub(this.lastPointer)
   }
 
   selectTool(tool) {
+    if (this.state !== 'gameplay') return
+    this.audio.playClick()
     this.tool = tool
+    this.cursor.setTexture(tool === 'brush' ? 'brush' : 'sponge')
     this.toolLabel.setText(`${tool === 'brush' ? 'Brush' : 'Sponge'} selected`)
-    this.brushCursor.setTexture(tool === 'brush' ? 'brush' : 'sponge')
     this.updateToolVisuals()
   }
 
-  pressTool() {
-    if (!this.brushCursor.visible) return
-    this.tweens.killTweensOf(this.brushCursor)
-    this.tweens.add({
-      targets: this.brushCursor,
-      scale: 0.15,
-      angle: this.tool === 'brush' ? -8 : 5,
-      duration: 90,
-      ease: 'Quad.easeOut',
-    })
-  }
-
-  releaseTool() {
-    if (!this.brushCursor) return
-    this.tweens.killTweensOf(this.brushCursor)
-    this.tweens.add({
-      targets: this.brushCursor,
-      scale: 0.182,
-      angle: 0,
-      duration: 150,
-      ease: 'Back.easeOut',
-    })
-  }
-
   updateToolVisuals() {
-    const selectedScale = 0.22
-    const unselectedScale = 0.16
-    this.brushButton.setScale(this.tool === 'brush' ? selectedScale : unselectedScale)
-    this.spongeButton.setScale(this.tool === 'sponge' ? selectedScale : unselectedScale)
-    this.brushButton.setTint(this.tool === 'brush' ? 0xffffff : 0x777777)
-    this.spongeButton.setTint(this.tool === 'sponge' ? 0xffffff : 0x777777)
+    this.brushButton.setScale(this.tool === 'brush' ? 0.22 : 0.16).setAlpha(this.tool === 'brush' ? 1 : 0.45)
+    this.spongeButton.setScale(this.tool === 'sponge' ? 0.22 : 0.16).setAlpha(this.tool === 'sponge' ? 1 : 0.45)
   }
 
-  moveBrush(pointer) {
-    this.brushCursor.setPosition(pointer.worldX, pointer.worldY)
-    this.brushCursor.setVisible(pointer.worldX > 0 && pointer.worldX < WIDTH && pointer.worldY > 0 && pointer.worldY < HEIGHT)
-    if (pointer.isDown && this.isPointerHeld) {
-      this.lastPointer = { worldX: pointer.worldX, worldY: pointer.worldY }
-      if (this.isPointerOnShoe(pointer)) {
-        const sound = this.tool === 'sponge' ? this.bubblesSound : this.cleaningSound
-        if (!sound.isPlaying) sound.play()
-        this.scrub(pointer, false)
-      }
-      }
+  beginCleaning(pointer) {
+    if (this.state !== 'gameplay' || !this.isOnShoe(pointer)) return
+    this.isPointerHeld = true
+    this.lastPointer = pointer
+    const sound = this.tool === 'brush' ? this.cleaningSound : this.bubblesSound
+    if (!sound.isPlaying) sound.play()
+    this.scrub(pointer)
   }
 
-  startCleaning(pointer) {
-    if (pointer.worldY > 760 && pointer.worldY < 930) {
-      if (pointer.worldX < 290) this.selectTool('brush')
-      else if (pointer.worldX < 470) this.selectTool('sponge')
+  moveCleaning(pointer) {
+    this.cursor.setPosition(pointer.worldX, pointer.worldY).setVisible(this.state === 'gameplay')
+    if (this.isPointerHeld && this.isOnShoe(pointer)) this.lastPointer = pointer
+  }
+
+  releaseCleaning() {
+    this.isPointerHeld = false
+    this.lastBrushPoint = null
+    this.cleaningSound?.stop()
+    this.bubblesSound?.stop()
+  }
+
+  isOnShoe(pointer) {
+    return pointer.worldX > SHOE_X - SHOE_SIZE / 2 && pointer.worldX < SHOE_X + SHOE_SIZE / 2 && pointer.worldY > SHOE_Y - SHOE_SIZE / 2 && pointer.worldY < SHOE_Y + SHOE_SIZE / 2
+  }
+
+  scrub(pointer) {
+    if (this.tool === 'sponge') {
+      this.addFoam(pointer)
       return
     }
-    if (!this.isPointerOnShoe(pointer)) return
-    this.isPointerHeld = true
-    const sound = this.tool === 'sponge' ? this.bubblesSound : this.cleaningSound
-    if (!sound.isPlaying) sound.play()
-    this.lastPointer = { worldX: pointer.worldX, worldY: pointer.worldY }
-    this.pressTool()
-    this.foamTimer = this.time.addEvent({
-      delay: 90,
-      loop: true,
-      callback: () => {
-        if (this.isPointerHeld) this.scrub(this.lastPointer, false)
-      },
-    })
-    this.scrub(pointer, true)
-  }
-
-  isPointerOnShoe(pointer) {
-    const localX = (pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024
-    const localY = (pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024
-    return localX >= 0 && localX <= 1024 && localY >= 0 && localY <= 1024
-  }
-
-  stopCleaning() {
-    this.isPointerHeld = false
-    if (this.cleaningSound.isPlaying) this.cleaningSound.stop()
-    if (this.bubblesSound.isPlaying) this.bubblesSound.stop()
-    if (this.foamTimer) {
-      this.foamTimer.remove()
-      this.foamTimer = null
-    }
-    this.lastPointer = null
-    this.lastBrushPoint = null
-  }
-
-  scrub(pointer, isNewStroke) {
-    if (!pointer || this.gameFinished) return
     const localX = Phaser.Math.Clamp((pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     const localY = Phaser.Math.Clamp((pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
-    if (this.tool === 'sponge') {
-      this.addFoam(localX, localY)
-      this.status.setText('Foam applied - switch to the brush')
-      return
-    }
-
-    const brushRadius = 108
-    this.eraseLayer(this.dirtCanvas, localX, localY, brushRadius, this.lastBrushPoint)
-    this.eraseLayer(this.foamCanvas, localX, localY, brushRadius + 10, this.lastBrushPoint)
-    this.removeFoamAt(localX, localY)
-    this.lastBrushPoint = { x: localX, y: localY }
-    this.status.setText('Keep brushing...')
-    this.progressCheckTimer += 1
-    if (this.progressCheckTimer >= 3 || isNewStroke) {
-      this.progressCheckTimer = 0
-      this.updateProgress(true)
-      if (this.isCanvasEmpty(this.dirtCanvas)) this.finishCleaning()
-    }
-  }
-
-  addFoam(localX, localY) {
-    if (this.foamStamps >= 240) return
-    const bubblesPerStroke = 4
-    for (let index = 0; index < bubblesPerStroke; index += 1) {
-      const size = Phaser.Math.Between(245, 330)
-      const offsetX = Phaser.Math.Between(-105, 105)
-      const offsetY = Phaser.Math.Between(-105, 105)
-      const cloudX = localX + offsetX
-      const cloudY = localY + offsetY
-      if (!this.isInsideShoe(cloudX, cloudY)) continue
-      const cloud = this.add.container(
-        SHOE_X - SHOE_SIZE / 2 + cloudX / 1024 * SHOE_SIZE,
-        SHOE_Y - SHOE_SIZE / 2 + cloudY / 1024 * SHOE_SIZE,
-      ).setDepth(2)
-      const cloudSize = size / 1024 * SHOE_SIZE
-      const cloudShape = this.add.graphics()
-      cloudShape.fillStyle(0xffffff, 0.3)
-      cloudShape.fillCircle(-cloudSize * 0.18, 0, cloudSize * 0.28)
-      cloudShape.fillCircle(cloudSize * 0.16, -cloudSize * 0.08, cloudSize * 0.34)
-      cloudShape.fillCircle(0, cloudSize * 0.14, cloudSize * 0.25)
-      cloud.add(cloudShape)
-      cloud.add(this.add.image(0, 0, 'bubbles').setDisplaySize(cloudSize, cloudSize).setAlpha(0.72))
-      this.foamClouds.push(cloud)
-    }
-    this.foamStamps += 1
-  }
-
-  isInsideShoe(localX, localY) {
-    const horizontal = (localX - 512) / 500
-    const vertical = (localY - 512) / 315
-    return horizontal * horizontal + vertical * vertical <= 1
-  }
-
-  removeFoamAt(localX, localY) {
-    const worldX = SHOE_X - SHOE_SIZE / 2 + localX / 1024 * SHOE_SIZE
-    const worldY = SHOE_Y - SHOE_SIZE / 2 + localY / 1024 * SHOE_SIZE
+    this.eraseLayer(this.dirtCanvas, localX, localY, 108, this.lastBrushPoint)
     this.foamClouds = this.foamClouds.filter((cloud) => {
-      if (Phaser.Math.Distance.Between(worldX, worldY, cloud.x, cloud.y) < 78) {
-        cloud.destroy()
-        return false
-      }
-      return true
+      const hit = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, cloud.x, cloud.y) < 72
+      if (hit) cloud.destroy()
+      return !hit
     })
+    this.lastBrushPoint = { x: localX, y: localY }
+    const remaining = this.countOpaquePixels(this.dirtCanvas)
+    this.cleanedAmount = Math.min(100, (this.initialDirtPixels - remaining) / this.initialDirtPixels * 100)
+    this.progressFull.setCrop(0, 0, 924 * this.cleanedAmount / 100, 88)
+    this.progressLabel.setText(`${Math.floor(this.cleanedAmount)}% Clean`)
+    if (remaining === 0) this.completeRound()
   }
 
-  isCanvasEmpty(canvasTexture) {
-    return this.countOpaquePixels(canvasTexture) === 0
+  addFoam(pointer) {
+    if (this.foamClouds.length >= 160) return
+    const x = Phaser.Math.Clamp(pointer.worldX, SHOE_X - 235, SHOE_X + 235)
+    const y = Phaser.Math.Clamp(pointer.worldY, SHOE_Y - 125, SHOE_Y + 125)
+    const cloud = this.add.image(x, y, 'bubbles').setDisplaySize(150, 150).setAlpha(0.35).setDepth(3)
+    this.foamCoverage = Math.min(100, this.foamCoverage + 1.2)
+    this.foamClouds.push(cloud)
   }
 
-  countOpaquePixels(canvasTexture) {
-    const pixels = canvasTexture.getContext().getImageData(0, 0, 1024, 1024).data
-    let opaquePixels = 0
-    for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) opaquePixels += 1
-    }
-    return opaquePixels
-  }
-
-  updateProgress(checkPixels = true) {
-    if (!checkPixels) return
-    const remainingPixels = this.countOpaquePixels(this.dirtCanvas)
-    const cleanedPixels = this.initialDirtPixels - remainingPixels
-    this.cleanedAmount = Math.min(99, cleanedPixels / this.initialDirtPixels * 100)
-    this.progressFill.width = 400 * this.cleanedAmount / 100
-    this.progressLabel.setText(`${Math.floor(this.cleanedAmount)}% clean`)
-  }
-
-  eraseLayer(canvasTexture, localX, localY, radius, previousPoint = null) {
-    const context = canvasTexture.getContext()
+  eraseLayer(texture, x, y, radius, previous) {
+    const context = texture.getContext()
     context.save()
     context.globalCompositeOperation = 'destination-out'
     context.lineCap = 'round'
-    context.lineJoin = 'round'
     context.lineWidth = radius * 2
     context.beginPath()
-    if (previousPoint) {
-      context.moveTo(previousPoint.x, previousPoint.y)
-      context.lineTo(localX, localY)
-      context.stroke()
-    } else {
-      context.arc(localX, localY, radius, 0, Math.PI * 2)
-      context.fill()
-    }
+    if (previous) { context.moveTo(previous.x, previous.y); context.lineTo(x, y); context.stroke() } else { context.arc(x, y, radius, 0, Math.PI * 2); context.fill() }
     context.restore()
-    canvasTexture.refresh()
+    texture.refresh()
   }
 
-  finishCleaning() {
-    if (this.gameFinished) return
-    this.gameFinished = true
-    this.stopCleaning()
-    this.foamClouds.forEach((cloud) => cloud.destroy())
-    this.foamClouds = []
-    this.foamCanvas.getContext().clearRect(0, 0, 1024, 1024)
-    this.foamCanvas.refresh()
+  countOpaquePixels(texture) {
+    const pixels = texture.getContext().getImageData(0, 0, 1024, 1024).data
+    let count = 0
+    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) count += 1
+    return count
+  }
+
+  completeRound() {
+    if (this.state !== 'gameplay') return
+    this.state = 'result'
+    this.releaseCleaning()
     this.dirtyShoe.setVisible(false)
-    this.progressFill.width = 400
-    this.progressLabel.setText('100% clean')
-    this.successSound.play()
-    this.createConfetti()
-    this.status.setText('Perfect!')
-    this.add.text(SHOE_X, 235, 'CLEAN!', {
-      color: '#f7d36b', fontFamily: 'Georgia, serif', fontSize: '58px', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(3)
+    this.audio.stopMusic()
+    this.audio.sound('success', { volume: 0.65 }).play()
+    this.add.image(SHOE_X, SHOE_Y, 'sparkle').setDisplaySize(430, 430).setAlpha(0.35).setDepth(4)
+    this.showResult()
   }
 
-  createConfetti() {
-    const colors = [0xf7d36b, 0xe87d72, 0x8bc6a8, 0x7da7d9, 0xf7f1e8]
-    for (let index = 0; index < 34; index += 1) {
-      const piece = this.add.rectangle(SHOE_X, 270, Phaser.Math.Between(7, 13), Phaser.Math.Between(12, 22), Phaser.Utils.Array.GetRandom(colors))
-        .setDepth(6)
-      this.tweens.add({
-        targets: piece,
-        x: SHOE_X + Phaser.Math.Between(-245, 245),
-        y: Phaser.Math.Between(430, 820),
-        angle: Phaser.Math.Between(-300, 300),
-        alpha: 0,
-        duration: Phaser.Math.Between(1600, 2400),
-        ease: 'Quad.easeOut',
-        onComplete: () => piece.destroy(),
-      })
-    }
+  showResult() {
+    this.resultOverlay = this.add.container(0, 0).setDepth(10)
+    this.resultOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.08).setInteractive())
+    this.resultOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'resultBg').setDisplaySize(520, 645))
+    this.resultOverlay.add(this.add.image(WIDTH / 2, 300, 'resultLogo').setDisplaySize(120, 120))
+    this.resultOverlay.add(this.add.text(WIDTH / 2, 470, 'TIME\n' + this.formatTime(this.elapsed) + '\n\nFOAM COVERAGE\n' + Math.floor(this.foamCoverage) + '%', { fontFamily: 'Mochiy Pop One', fontSize: '19px', color: '#111', align: 'center' }).setOrigin(0.5))
+    const next = this.add.image(WIDTH / 2, 700, 'resultNext').setDisplaySize(240, 74).setInteractive()
+    next.on('pointerdown', () => { this.audio.playClick(); this.startRound((this.roundIndex + 1) % shoes.length) })
+    const restart = this.add.image(WIDTH / 2, 790, 'resultRestart').setDisplaySize(240, 74).setInteractive()
+    restart.on('pointerdown', () => { this.audio.playClick(); this.startRound(this.roundIndex) })
+    this.resultOverlay.add([next, restart])
   }
 
-  handleResize(gameSize) {
-    const scale = Math.min(gameSize.width / WIDTH, gameSize.height / HEIGHT)
+  formatTime(ms) {
+    const seconds = Math.floor(ms / 1000)
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  }
+
+  openPause() {
+    if (this.state !== 'gameplay') return
+    this.state = 'pause'
+    this.pauseStartedAt = this.time.now
+    this.releaseCleaning()
+    this.audio.stopMusic()
+    this.audio.playMusic('menu')
+    this.showPauseModal()
+  }
+
+  showPauseModal() {
+    this.pauseOverlay = this.add.container(0, 0).setDepth(10)
+    this.pauseOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.15).setInteractive())
+    this.pauseOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'pauseBg').setDisplaySize(520, 645))
+    this.pauseOverlay.add(this.add.image(WIDTH / 2, 305, 'pauseLogo').setDisplaySize(120, 120))
+    const resume = this.add.text(WIDTH / 2, 500, 'RESUME', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff', backgroundColor: '#21bf49', padding: { x: 30, y: 12 } }).setOrigin(0.5).setInteractive()
+    resume.on('pointerdown', () => this.resumeGame())
+    const restart = this.add.image(WIDTH / 2, 620, 'pauseRestart').setDisplaySize(250, 77).setInteractive()
+    restart.on('pointerdown', () => { this.audio.playClick(); this.startRound(this.roundIndex) })
+    const quit = this.add.image(WIDTH / 2, 725, 'pauseQuit').setDisplaySize(250, 77).setInteractive()
+    quit.on('pointerdown', () => { this.audio.playClick(); this.showQuitConfirm() })
+    const toggle = this.add.text(WIDTH / 2, 420, `SOUND  ${this.soundEnabled ? 'ON' : 'OFF'}`, { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#111', backgroundColor: '#fff', padding: { x: 22, y: 10 } }).setOrigin(0.5).setInteractive()
+    toggle.on('pointerdown', () => { this.audio.playClick(); this.soundEnabled = !this.soundEnabled; this.audio.setEnabled(this.soundEnabled); toggle.setText(`SOUND  ${this.soundEnabled ? 'ON' : 'OFF'}`) })
+    const close = this.add.image(465, 225, 'pauseClose').setDisplaySize(34, 34).setInteractive()
+    close.on('pointerdown', () => this.resumeGame())
+    this.pauseOverlay.add([resume, restart, quit, toggle, close])
+  }
+
+  resumeGame() {
+    this.audio.playClick()
+    this.pausedAt += this.time.now - this.pauseStartedAt
+    this.pauseStartedAt = 0
+    this.pauseOverlay?.destroy()
+    this.pauseOverlay = null
+    this.state = 'gameplay'
+    this.audio.playMusic('gameplay')
+  }
+
+  showQuitConfirm() {
+    this.pauseOverlay?.setVisible(false)
+    this.quitOverlay = this.add.container(0, 0).setDepth(11)
+    this.quitOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.15).setInteractive())
+    this.quitOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'quitBg').setDisplaySize(500, 335))
+    this.quitOverlay.add(this.add.text(WIDTH / 2, 460, 'Are you sure you want to\nquit?', { fontFamily: 'Mochiy Pop One', fontSize: '18px', color: '#111', align: 'center' }).setOrigin(0.5))
+    const cancel = this.add.image(230, 650, 'quitCancel').setDisplaySize(145, 60).setInteractive()
+    cancel.on('pointerdown', () => { this.audio.playClick(); this.quitOverlay.destroy(); this.pauseOverlay.setVisible(true) })
+    const quit = this.add.image(370, 650, 'quitConfirm').setDisplaySize(145, 60).setInteractive()
+    quit.on('pointerdown', () => { this.audio.playClick(); this.quitOverlay.destroy(); this.showStart() })
+    this.quitOverlay.add([cancel, quit])
+  }
+
+  resize() {
+    const scale = Math.min(this.scale.width / WIDTH, this.scale.height / HEIGHT)
     this.cameras.main.setZoom(scale)
-    this.cameras.main.centerOn(SHOE_X, HEIGHT / 2)
+    this.cameras.main.centerOn(WIDTH / 2, HEIGHT / 2)
   }
 }
 
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game-container',
-  backgroundColor: '#000000',
-  scale: {
-    mode: Phaser.Scale.FIT,
-    width: WIDTH,
-    height: HEIGHT,
-  },
-  scene: ShoeCleanerScene,
+  backgroundColor: '#000',
+  scale: { mode: Phaser.Scale.FIT, width: WIDTH, height: HEIGHT },
+  scene: [LoadingScene, GameScene],
 })
