@@ -32,6 +32,7 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.foamTimer = null
     this.lastPointer = null
     this.isPointerHeld = false
+    this.progressCheckTimer = 0
     this.createBackground()
     this.createProgress()
     this.createShoe()
@@ -43,9 +44,6 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.game.canvas.addEventListener('pointermove', this.handleCanvasPointerMove)
     this.game.canvas.addEventListener('pointerup', this.handleCanvasPointerUp)
     this.game.canvas.addEventListener('pointercancel', this.handleCanvasPointerUp)
-    this.game.canvas.addEventListener('mousedown', this.handleCanvasPointerDown)
-    this.game.canvas.addEventListener('mousemove', this.handleCanvasPointerMove)
-    this.game.canvas.addEventListener('mouseup', this.handleCanvasPointerUp)
     this.handleResize(this.scale)
   }
 
@@ -56,8 +54,7 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.add.image(SHOE_X, 62, 'logo').setDisplaySize(220, 100)
     this.refreshButton = this.add.text(WIDTH - 36, 48, '↻', {
       color: '#f7f1e8', fontFamily: 'Arial, sans-serif', fontSize: '36px',
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(4)
-    this.refreshButton.on('pointerdown', () => this.resetGame())
+    }).setOrigin(0.5).setDepth(4)
     this.status = this.add.text(SHOE_X, 112, 'Scrub the dirt away', {
       color: '#b9d3c8', fontFamily: 'Arial, sans-serif', fontSize: '20px',
     }).setOrigin(0.5)
@@ -89,10 +86,8 @@ class ShoeCleanerScene extends Phaser.Scene {
   }
 
   createControls() {
-    this.brushButton = this.add.image(205, 850, 'brush').setInteractive({ useHandCursor: true })
-    this.spongeButton = this.add.image(371, 850, 'sponge').setInteractive({ useHandCursor: true })
-    this.brushButton.on('pointerdown', () => this.selectTool('brush'))
-    this.spongeButton.on('pointerdown', () => this.selectTool('sponge'))
+    this.brushButton = this.add.image(205, 850, 'brush')
+    this.spongeButton = this.add.image(371, 850, 'sponge')
     document.querySelector('#brush-control').addEventListener('click', () => this.selectTool('brush'))
     document.querySelector('#sponge-control').addEventListener('click', () => this.selectTool('sponge'))
     document.querySelector('#refresh-control').addEventListener('click', () => this.resetGame())
@@ -292,9 +287,13 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.eraseLayer(this.foamCanvas, localX, localY, brushRadius + 10, this.lastBrushPoint)
     this.removeFoamAt(localX, localY)
     this.lastBrushPoint = { x: localX, y: localY }
-    this.updateProgress()
     this.status.setText('Keep brushing...')
-    if (this.isCanvasEmpty(this.dirtCanvas)) this.finishCleaning()
+    this.progressCheckTimer += 1
+    if (this.progressCheckTimer >= 3 || isNewStroke) {
+      this.progressCheckTimer = 0
+      this.updateProgress(true)
+      if (this.isCanvasEmpty(this.dirtCanvas)) this.finishCleaning()
+    }
   }
 
   addFoam(localX, localY) {
@@ -355,7 +354,8 @@ class ShoeCleanerScene extends Phaser.Scene {
     return opaquePixels
   }
 
-  updateProgress() {
+  updateProgress(checkPixels = true) {
+    if (!checkPixels) return
     const remainingPixels = this.countOpaquePixels(this.dirtCanvas)
     const cleanedPixels = this.initialDirtPixels - remainingPixels
     this.cleanedAmount = Math.min(99, cleanedPixels / this.initialDirtPixels * 100)
