@@ -72,7 +72,7 @@ class AudioManager {
   }
 
   playClick() {
-    if (this.enabled) this.scene.sound.play('click', { volume: 0.55 })
+    if (this.enabled) this.scene.sound.play('click', { volume: 1 })
   }
 
   setEnabled(enabled) {
@@ -83,7 +83,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: 0.32 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.3 })
     this.music.play()
   }
 
@@ -121,10 +121,8 @@ class LoadingScene extends Phaser.Scene {
     Object.entries(files).forEach(([key, path]) => {
       if (!this.textures.exists(key)) this.load.image(key, asset(path))
     })
-    shoes.forEach((shoe, index) => {
-      this.load.image(`shoe${index}Clean`, shoe.clean)
-      this.load.image(`shoe${index}Dirty`, shoe.dirty)
-    })
+    this.load.image('shoe0Clean', shoes[0].clean)
+    this.load.image('shoe0Dirty', shoes[0].dirty)
     Object.entries(audioFiles).forEach(([key, path]) => this.load.audio(key, asset(path)))
     this.load.on('progress', (value) => {
       const percent = Math.floor(value * 100)
@@ -169,6 +167,10 @@ class GameScene extends Phaser.Scene {
   }
 
   startRound(index) {
+    if (!this.textures.exists(`shoe${index}Clean`) || !this.textures.exists(`shoe${index}Dirty`)) {
+      this.loadRoundAssets(index, () => this.startRound(index))
+      return
+    }
     this.roundIndex = index
     this.clearScene()
     this.state = 'gameplay'
@@ -182,6 +184,14 @@ class GameScene extends Phaser.Scene {
     this.isPointerHeld = false
     this.audio.playMusic('gameplay')
     this.createGameplay()
+  }
+
+  loadRoundAssets(index, onComplete) {
+    this.state = 'loading'
+    this.load.image(`shoe${index}Clean`, shoes[index].clean)
+    this.load.image(`shoe${index}Dirty`, shoes[index].dirty)
+    this.load.once('complete', onComplete)
+    this.load.start()
   }
 
   createGameplay() {
@@ -315,21 +325,42 @@ class GameScene extends Phaser.Scene {
     this.dirtyShoe.setVisible(false)
     this.audio.stopMusic()
     this.audio.sound('success', { volume: 0.65 }).play()
-    this.add.image(SHOE_X, SHOE_Y, 'sparkle').setDisplaySize(430, 430).setAlpha(0.35).setDepth(4)
     this.showResult()
   }
 
   showResult() {
     this.resultOverlay = this.add.container(0, 0).setDepth(10)
-    this.resultOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.08).setInteractive())
+    this.resultOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.48).setInteractive())
     this.resultOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'resultBg').setDisplaySize(520, 645))
     this.resultOverlay.add(this.add.image(WIDTH / 2, 300, 'resultLogo').setDisplaySize(120, 120))
     this.resultOverlay.add(this.add.text(WIDTH / 2, 470, 'TIME\n' + this.formatTime(this.elapsed) + '\n\nFOAM COVERAGE\n' + Math.floor(this.foamCoverage) + '%', { fontFamily: 'Mochiy Pop One', fontSize: '19px', color: '#111', align: 'center' }).setOrigin(0.5))
-    const next = this.add.image(WIDTH / 2, 700, 'resultNext').setDisplaySize(240, 74).setInteractive()
+    this.addCompletionConfetti()
+    const next = this.add.image(WIDTH / 2, 640, 'resultNext').setDisplaySize(240, 74).setInteractive()
     next.on('pointerdown', () => { this.audio.playClick(); this.startRound((this.roundIndex + 1) % shoes.length) })
-    const restart = this.add.image(WIDTH / 2, 790, 'resultRestart').setDisplaySize(240, 74).setInteractive()
+    const restart = this.add.image(WIDTH / 2, 730, 'resultRestart').setDisplaySize(240, 74).setInteractive()
     restart.on('pointerdown', () => { this.audio.playClick(); this.startRound(this.roundIndex) })
     this.resultOverlay.add([next, restart])
+  }
+
+  addCompletionConfetti() {
+    const colors = [0xff4f9a, 0xffd84d, 0x5ccaf4, 0x8fd14f, 0xffb83e, 0x9c73e8]
+    for (let index = 0; index < 38; index += 1) {
+      const startX = Phaser.Math.Between(70, WIDTH - 70)
+      const startY = Phaser.Math.Between(205, 330)
+      const piece = this.add.rectangle(startX, startY, Phaser.Math.Between(8, 13), Phaser.Math.Between(15, 23), Phaser.Utils.Array.GetRandom(colors))
+        .setRotation(Phaser.Math.FloatBetween(-0.65, 0.65))
+      this.resultOverlay.add(piece)
+      this.tweens.add({
+        targets: piece,
+        x: Phaser.Math.Clamp(startX + Phaser.Math.Between(-130, 130), 36, WIDTH - 36),
+        y: Phaser.Math.Between(650, 880),
+        angle: Phaser.Math.Between(-450, 450),
+        alpha: 0,
+        duration: Phaser.Math.Between(1050, 1700),
+        delay: Phaser.Math.Between(0, 260),
+        ease: 'Quad.easeIn',
+      })
+    }
   }
 
   formatTime(ms) {
@@ -352,8 +383,6 @@ class GameScene extends Phaser.Scene {
     this.pauseOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.15).setInteractive())
     this.pauseOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'pauseBg').setDisplaySize(520, 645))
     this.pauseOverlay.add(this.add.image(WIDTH / 2, 305, 'pauseLogo').setDisplaySize(120, 120))
-    const resume = this.add.text(WIDTH / 2, 500, 'RESUME', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff', backgroundColor: '#21bf49', padding: { x: 30, y: 12 } }).setOrigin(0.5).setInteractive()
-    resume.on('pointerdown', () => this.resumeGame())
     const restart = this.add.image(WIDTH / 2, 620, 'pauseRestart').setDisplaySize(250, 77).setInteractive()
     restart.on('pointerdown', () => { this.audio.playClick(); this.startRound(this.roundIndex) })
     const quit = this.add.image(WIDTH / 2, 725, 'pauseQuit').setDisplaySize(250, 77).setInteractive()
@@ -362,7 +391,7 @@ class GameScene extends Phaser.Scene {
     toggle.on('pointerdown', () => { this.audio.playClick(); this.soundEnabled = !this.soundEnabled; this.audio.setEnabled(this.soundEnabled); toggle.setText(`SOUND  ${this.soundEnabled ? 'ON' : 'OFF'}`) })
     const close = this.add.image(465, 225, 'pauseClose').setDisplaySize(34, 34).setInteractive()
     close.on('pointerdown', () => this.resumeGame())
-    this.pauseOverlay.add([resume, restart, quit, toggle, close])
+    this.pauseOverlay.add([restart, quit, toggle, close])
   }
 
   resumeGame() {
@@ -379,13 +408,37 @@ class GameScene extends Phaser.Scene {
     this.pauseOverlay?.setVisible(false)
     this.quitOverlay = this.add.container(0, 0).setDepth(11)
     this.quitOverlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x000000, 0.15).setInteractive())
-    this.quitOverlay.add(this.add.image(WIDTH / 2, HEIGHT / 2, 'quitBg').setDisplaySize(500, 335))
-    this.quitOverlay.add(this.add.text(WIDTH / 2, 460, 'Are you sure you want to\nquit?', { fontFamily: 'Mochiy Pop One', fontSize: '18px', color: '#111', align: 'center' }).setOrigin(0.5))
-    const cancel = this.add.image(230, 650, 'quitCancel').setDisplaySize(145, 60).setInteractive()
-    cancel.on('pointerdown', () => { this.audio.playClick(); this.quitOverlay.destroy(); this.pauseOverlay.setVisible(true) })
-    const quit = this.add.image(370, 650, 'quitConfirm').setDisplaySize(145, 60).setInteractive()
-    quit.on('pointerdown', () => { this.audio.playClick(); this.quitOverlay.destroy(); this.showStart() })
-    this.quitOverlay.add([cancel, quit])
+    const popup = { x: WIDTH / 2, y: HEIGHT / 2, width: 500, height: 350, padding: 40 }
+    this.quitOverlay.add(this.add.image(popup.x, popup.y, 'quitBg').setDisplaySize(popup.width, popup.height))
+
+    // Keep every control inside a consistent inset so the popup has breathing room.
+    this.quitOverlay.add(this.add.text(popup.x, 446, 'Quit game?', {
+      fontFamily: 'Mochiy Pop One', fontSize: '25px', color: '#111', align: 'center',
+    }).setOrigin(0.5))
+    this.quitOverlay.add(this.add.text(popup.x, 495, 'Your current round will be lost.', {
+      fontFamily: 'Mochiy Pop One', fontSize: '15px', color: '#333', align: 'center',
+    }).setOrigin(0.5))
+
+    const closeQuit = () => {
+      this.audio.playClick()
+      this.quitOverlay?.destroy()
+      this.quitOverlay = null
+      this.pauseOverlay?.setVisible(true)
+    }
+    const close = this.add.image(popup.x + popup.width / 2 - popup.padding / 2, popup.y - popup.height / 2 + popup.padding / 2, 'quitClose')
+      .setDisplaySize(38, 38).setInteractive()
+    close.on('pointerdown', closeQuit)
+
+    const cancel = this.add.image(174, 585, 'quitCancel').setDisplaySize(190, 76).setInteractive()
+    cancel.on('pointerdown', closeQuit)
+    const quit = this.add.image(402, 585, 'quitConfirm').setDisplaySize(190, 76).setInteractive()
+    quit.on('pointerdown', () => {
+      this.audio.playClick()
+      this.quitOverlay?.destroy()
+      this.pauseOverlay?.destroy()
+      this.showStart()
+    })
+    this.quitOverlay.add([close, cancel, quit])
   }
 
   resize() {
