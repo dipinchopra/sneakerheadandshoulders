@@ -234,7 +234,6 @@ class GameScene extends Phaser.Scene {
 
   selectTool(tool) {
     if (this.state !== 'gameplay') return
-    this.audio.playClick()
     this.tool = tool
     this.cursor.setTexture(tool === 'brush' ? 'brush' : 'sponge')
     this.toolLabel.setText(`${tool === 'brush' ? 'Brush' : 'Sponge'} selected`)
