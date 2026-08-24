@@ -83,7 +83,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: 0.3 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: key === 'gameplay' ? 0.18 : 0.3 })
     this.music.play()
   }
 
@@ -159,7 +159,9 @@ class GameScene extends Phaser.Scene {
     this.clearScene()
     this.state = 'start'
     this.audio.playMusic('menu')
-    this.add.image(WIDTH / 2, HEIGHT / 2, 'startBg').setDisplaySize(WIDTH, HEIGHT)
+    const startBackground = this.add.image(WIDTH / 2, HEIGHT / 2, 'startBg').setDisplaySize(WIDTH, HEIGHT).setInteractive()
+    // Browsers unlock audio on the first touch/click, so retry the start music then.
+    startBackground.on('pointerdown', () => this.audio.playMusic('menu'))
     this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
     this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
       .on('pointerdown', () => { this.audio.playClick(); this.startRound(0) })
