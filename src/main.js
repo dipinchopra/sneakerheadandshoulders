@@ -72,7 +72,7 @@ class AudioManager {
   }
 
   playClick() {
-    if (this.enabled) this.scene.sound.play('click', { volume: 1 })
+    if (this.enabled) this.scene.sound.play('click', { volume: 0.8 })
   }
 
   setEnabled(enabled) {
