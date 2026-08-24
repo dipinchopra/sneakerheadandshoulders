@@ -32,6 +32,8 @@ class ShoeCleanerScene extends Phaser.Scene {
     this.foamTimer = null
     this.lastPointer = null
     this.isPointerHeld = false
+    this.cursorFrame = null
+    this.pendingPointer = null
     this.progressCheckTimer = 0
     this.createBackground()
     this.createProgress()
@@ -155,7 +157,12 @@ class ShoeCleanerScene extends Phaser.Scene {
   handleCanvasPointerMove = (event) => {
     const pointer = this.getCanvasPointer(event)
     pointer.isDown = this.isPointerHeld || event.buttons > 0
-    this.moveBrush(pointer)
+    this.pendingPointer = pointer
+    if (this.cursorFrame) return
+    this.cursorFrame = requestAnimationFrame(() => {
+      this.cursorFrame = null
+      if (this.pendingPointer) this.moveBrush(this.pendingPointer)
+    })
   }
 
   handleCanvasPointerUp = () => {
@@ -222,7 +229,7 @@ class ShoeCleanerScene extends Phaser.Scene {
   moveBrush(pointer) {
     this.brushCursor.setPosition(pointer.worldX, pointer.worldY)
     this.brushCursor.setVisible(pointer.worldX > 0 && pointer.worldX < WIDTH && pointer.worldY > 0 && pointer.worldY < HEIGHT)
-    if (pointer.isDown) {
+    if (pointer.isDown && this.isPointerHeld) {
       this.lastPointer = { worldX: pointer.worldX, worldY: pointer.worldY }
       if (this.isPointerOnShoe(pointer)) {
         const sound = this.tool === 'sponge' ? this.bubblesSound : this.cleaningSound
