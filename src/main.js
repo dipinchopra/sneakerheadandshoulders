@@ -229,7 +229,13 @@ class GameScene extends Phaser.Scene {
     this.addPressFeedback(this.spongeButton)
     this.tool = 'sponge'
     this.toolLabel = this.add.text(WIDTH / 2, 950, 'Sponge selected', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
-    this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(6).setVisible(false)
+    
+    // High depth and visible immediately
+    this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge')
+      .setScale(0.182)
+      .setDepth(9999)
+      .setVisible(true)
+
     this.updateToolVisuals()
     this.cleaningSound = this.audio.sound('cleaning', { loop: true, volume: 1 })
     this.bubblesSound = this.audio.sound('bubbles', { loop: true, volume: 1 })
@@ -268,10 +274,11 @@ class GameScene extends Phaser.Scene {
   }
 
   moveCleaning(pointer) {
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
     const isInside = pointer.x >= 0 && pointer.y >= 0 && 
-                     pointer.x <= this.scale.width && pointer.y <= this.scale.height;
+                     pointer.x <= this.scale.width && pointer.y <= this.scale.height
     
-    this.cursor.setPosition(pointer.worldX, pointer.worldY)
+    this.cursor.setPosition(worldPoint.x, worldPoint.y)
                .setVisible(this.state === 'gameplay' && isInside)
 
     if (this.isPointerHeld && this.isOnShoe(pointer)) {
