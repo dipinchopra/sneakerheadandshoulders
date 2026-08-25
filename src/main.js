@@ -83,7 +83,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: 0.14 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.18 })
     this.music.play()
   }
 
@@ -169,7 +169,6 @@ class GameScene extends Phaser.Scene {
     this.state = 'start'
     this.audio.playMusic('menu')
     const startBackground = this.add.image(WIDTH / 2, HEIGHT / 2, 'startBg').setDisplaySize(WIDTH, HEIGHT).setInteractive()
-    // Browsers unlock audio on the first touch/click, so retry the start music then.
     startBackground.on('pointerdown', () => this.audio.playMusic('menu'))
     this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
     const play = this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
@@ -237,6 +236,7 @@ class GameScene extends Phaser.Scene {
     this.events.on('update', this.updateGame, this)
     this.input.on('pointerdown', this.beginCleaning, this)
     this.input.on('pointermove', this.moveCleaning, this)
+    this.input.on('pointerout', () => this.cursor.setVisible(false))
   }
 
   updateGame(_time, delta) {
@@ -268,8 +268,15 @@ class GameScene extends Phaser.Scene {
   }
 
   moveCleaning(pointer) {
-    this.cursor.setPosition(pointer.worldX, pointer.worldY).setVisible(this.state === 'gameplay')
-    if (this.isPointerHeld && this.isOnShoe(pointer)) this.lastPointer = pointer
+    const isInside = pointer.x >= 0 && pointer.y >= 0 && 
+                     pointer.x <= this.scale.width && pointer.y <= this.scale.height;
+    
+    this.cursor.setPosition(pointer.worldX, pointer.worldY)
+               .setVisible(this.state === 'gameplay' && isInside)
+
+    if (this.isPointerHeld && this.isOnShoe(pointer)) {
+      this.lastPointer = pointer
+    }
   }
 
   releaseCleaning() {
@@ -431,7 +438,6 @@ class GameScene extends Phaser.Scene {
     const popup = { x: WIDTH / 2, y: HEIGHT / 2, width: 500, height: 350, padding: 40 }
     this.quitOverlay.add(this.add.image(popup.x, popup.y, 'quitBg').setDisplaySize(popup.width, popup.height))
 
-    // Keep every control inside a consistent inset so the popup has breathing room.
     this.quitOverlay.add(this.add.text(popup.x, 446, 'Quit game?', {
       fontFamily: 'Mochiy Pop One', fontSize: '25px', color: '#111', align: 'center',
     }).setOrigin(0.5))
