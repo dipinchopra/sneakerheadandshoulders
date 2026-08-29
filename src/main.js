@@ -45,8 +45,8 @@ const files = {
   resultRestart: 'assets/UI Assets/Game Result/Restart.png',
   brush: 'assets/Art Assets/brush.png',
   sponge: 'assets/Art Assets/spong.png',
-  washCloth: 'assets/Art Assets/washcloth.png', // Added wash cloth asset
-  coin: 'assets/coin/coin.png',               // Added coin asset
+  washCloth: 'assets/Art Assets/cloth.png',     // Corrected asset path to cloth.png
+  coin: 'assets/coin/coin.png',               
   bubbles: 'assets/Art Assets/bubbles.png',
   sparkle: 'assets/Art Assets/sparkle.png',
 }
@@ -58,8 +58,8 @@ const audioFiles = {
   cleaning: 'assets/audio/shoe-cleaning-v2.wav',
   bubbles: 'assets/audio/bubbles-v2.wav',
   success: 'assets/audio/success-v2.wav',
-  clothWipe: 'assets/audio/cloth-wipe.wav',     // Added SFX for wash cloth
-  coinPop: 'assets/audio/coin-pop.wav',         // Added coin reward sound effect
+  clothWipe: 'assets/audio/cloth.wav',         // Corrected asset path to cloth.wav
+  coinPop: 'assets/audio/coin-pop.wav',         
 }
 
 class AudioManager {
@@ -155,7 +155,7 @@ class GameScene extends Phaser.Scene {
     this.roundIndex = 0
     this.state = 'start'
     this.soundEnabled = true
-    this.totalCoins = 0 // Persistent coin tracking per session
+    this.totalCoins = 0
     this.showStart()
     this.input.on('pointerup', () => this.releaseCleaning())
     this.scale.on('resize', this.resize, this)
@@ -216,7 +216,6 @@ class GameScene extends Phaser.Scene {
       .on('pointerdown', () => { this.audio.playClick(); this.openPause() })
     this.addPressFeedback(this.pauseButton)
     
-    // Coin Display UI Header
     this.add.image(75, 46, 'coin').setDisplaySize(36, 36)
     this.coinText = this.add.text(105, 46, `${this.totalCoins}`, { fontFamily: 'Mochiy Pop One', fontSize: '18px', color: '#fff' }).setOrigin(0, 0.5)
 
@@ -232,7 +231,6 @@ class GameScene extends Phaser.Scene {
     this.dirtyShoe = this.add.image(SHOE_X, SHOE_Y, this.dirtCanvas.key).setDisplaySize(SHOE_SIZE, SHOE_SIZE)
     this.foamClouds = []
     
-    // Tool buttons setup (Sponge, Brush, Wash Cloth)
     this.spongeButton = this.add.image(130, 850, 'sponge').setScale(0.16)
     this.brushButton = this.add.image(288, 850, 'brush').setScale(0.16)
     this.clothButton = this.add.image(446, 850, 'washCloth').setScale(0.16)
@@ -248,6 +246,9 @@ class GameScene extends Phaser.Scene {
     this.tool = 'sponge'
     this.toolLabel = this.add.text(WIDTH / 2, 950, 'Sponge selected', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
     
+    // Explicit mouse cursor style fix for browser window
+    this.input.setDefaultCursor('default')
+
     this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge')
       .setScale(0.182)
       .setDepth(9999)
@@ -256,7 +257,7 @@ class GameScene extends Phaser.Scene {
     this.updateToolVisuals()
     this.cleaningSound = this.audio.sound('cleaning', { loop: true, volume: 1 })
     this.bubblesSound = this.audio.sound('bubbles', { loop: true, volume: 1 })
-    this.clothSound = this.audio.sound('clothWipe', { loop: true, volume: 1 })
+    this.clothSound = this.audio.sound('clothWipe', { loop: false, volume: 1 }) // Configured for one-shot swipe triggers
     
     this.events.on('update', this.updateGame, this)
     this.input.on('pointerdown', this.beginCleaning, this)
@@ -273,7 +274,6 @@ class GameScene extends Phaser.Scene {
   selectTool(tool) {
     if (this.state !== 'gameplay') return
     
-    // Enforce sequential gamification rules
     if (tool === 'brush' && this.cleanedAmount < 20) {
       this.toolLabel.setText('Use Sponge first!')
       return
@@ -301,11 +301,15 @@ class GameScene extends Phaser.Scene {
     this.isPointerHeld = true
     this.lastPointer = pointer
     
-    let sound = this.bubblesSound
-    if (this.tool === 'brush') sound = this.cleaningSound
-    if (this.tool === 'washCloth') sound = this.clothSound
+    if (this.tool === 'sponge') {
+      if (!this.bubblesSound.isPlaying) this.bubblesSound.play()
+    } else if (this.tool === 'brush') {
+      if (!this.cleaningSound.isPlaying) this.cleaningSound.play()
+    } else if (this.tool === 'washCloth') {
+      // Trigger cloth.wav immediately on swipe start
+      if (!this.clothSound.isPlaying) this.clothSound.play()
+    }
 
-    if (!sound.isPlaying) sound.play()
     this.scrub(pointer)
   }
 
@@ -319,6 +323,11 @@ class GameScene extends Phaser.Scene {
 
     if (this.isPointerHeld && this.isOnShoe(pointer)) {
       this.lastPointer = pointer
+
+      // Trigger cloth.wav on continuous movement swipes for the wash cloth tool
+      if (this.tool === 'washCloth' && !this.clothSound.isPlaying) {
+        this.clothSound.play()
+      }
     }
   }
 
@@ -340,7 +349,6 @@ class GameScene extends Phaser.Scene {
       return
     }
 
-    // Restrict brush usage past 50% until wash cloth is unlocked
     if (this.tool === 'brush' && this.cleanedAmount >= 50) {
       this.toolLabel.setText('Switch to Wash Cloth to finish!')
       return
@@ -361,7 +369,6 @@ class GameScene extends Phaser.Scene {
     
     let rawCleaned = (this.initialDirtPixels - remaining) / this.initialDirtPixels * 100
     
-    // Gate progress milestones for structured multi-tool gameplay
     if (this.tool === 'brush') {
       this.cleanedAmount = Math.min(50, rawCleaned)
     } else if (this.tool === 'washCloth') {
@@ -371,7 +378,6 @@ class GameScene extends Phaser.Scene {
     this.progressFull.setCrop(0, 0, 924 * this.cleanedAmount / 100, 88)
     this.progressLabel.setText(`${Math.floor(this.cleanedAmount)}% Clean`)
 
-    // Milestone coin reward checkpoints
     if (this.cleanedAmount >= 50 && !this.rewardedMilestone50) {
       this.rewardedMilestone50 = true
       this.awardCoins(50, 'Brush Milestone Reached!')
