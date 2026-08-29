@@ -45,6 +45,8 @@ const files = {
   resultRestart: 'assets/UI Assets/Game Result/Restart.png',
   brush: 'assets/Art Assets/brush.png',
   sponge: 'assets/Art Assets/spong.png',
+  washCloth: 'assets/Art Assets/washcloth.png', // Added wash cloth asset
+  coin: 'assets/coin/coin.png',               // Added coin asset
   bubbles: 'assets/Art Assets/bubbles.png',
   sparkle: 'assets/Art Assets/sparkle.png',
 }
@@ -56,6 +58,8 @@ const audioFiles = {
   cleaning: 'assets/audio/shoe-cleaning-v2.wav',
   bubbles: 'assets/audio/bubbles-v2.wav',
   success: 'assets/audio/success-v2.wav',
+  clothWipe: 'assets/audio/cloth-wipe.wav',     // Added SFX for wash cloth
+  coinPop: 'assets/audio/coin-pop.wav',         // Added coin reward sound effect
 }
 
 class AudioManager {
@@ -151,6 +155,7 @@ class GameScene extends Phaser.Scene {
     this.roundIndex = 0
     this.state = 'start'
     this.soundEnabled = true
+    this.totalCoins = 0 // Persistent coin tracking per session
     this.showStart()
     this.input.on('pointerup', () => this.releaseCleaning())
     this.scale.on('resize', this.resize, this)
@@ -210,6 +215,11 @@ class GameScene extends Phaser.Scene {
     this.pauseButton = this.add.image(530, 46, 'gameplayPause').setDisplaySize(44, 44).setInteractive()
       .on('pointerdown', () => { this.audio.playClick(); this.openPause() })
     this.addPressFeedback(this.pauseButton)
+    
+    // Coin Display UI Header
+    this.add.image(75, 46, 'coin').setDisplaySize(36, 36)
+    this.coinText = this.add.text(105, 46, `${this.totalCoins}`, { fontFamily: 'Mochiy Pop One', fontSize: '18px', color: '#fff' }).setOrigin(0, 0.5)
+
     this.progressBg = this.add.image(WIDTH / 2, 142, 'progressEmpty').setDisplaySize(430, 42)
     this.progressFull = this.add.image(73, 142, 'progressFull').setOrigin(0, 0.5).setDisplaySize(430, 42)
     this.progressFull.setCrop(0, 0, 0, 88)
@@ -221,16 +231,23 @@ class GameScene extends Phaser.Scene {
     this.initialDirtPixels = this.countOpaquePixels(this.dirtCanvas)
     this.dirtyShoe = this.add.image(SHOE_X, SHOE_Y, this.dirtCanvas.key).setDisplaySize(SHOE_SIZE, SHOE_SIZE)
     this.foamClouds = []
-    this.brushButton = this.add.image(190, 850, 'brush').setScale(0.16)
-    this.spongeButton = this.add.image(385, 850, 'sponge').setScale(0.16)
-    this.brushButton.setInteractive().on('pointerdown', () => this.selectTool('brush'))
+    
+    // Tool buttons setup (Sponge, Brush, Wash Cloth)
+    this.spongeButton = this.add.image(130, 850, 'sponge').setScale(0.16)
+    this.brushButton = this.add.image(288, 850, 'brush').setScale(0.16)
+    this.clothButton = this.add.image(446, 850, 'washCloth').setScale(0.16)
+
     this.spongeButton.setInteractive().on('pointerdown', () => this.selectTool('sponge'))
-    this.addPressFeedback(this.brushButton)
+    this.brushButton.setInteractive().on('pointerdown', () => this.selectTool('brush'))
+    this.clothButton.setInteractive().on('pointerdown', () => this.selectTool('washCloth'))
+
     this.addPressFeedback(this.spongeButton)
+    this.addPressFeedback(this.brushButton)
+    this.addPressFeedback(this.clothButton)
+
     this.tool = 'sponge'
     this.toolLabel = this.add.text(WIDTH / 2, 950, 'Sponge selected', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
     
-    // High depth and visible immediately
     this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge')
       .setScale(0.182)
       .setDepth(9999)
@@ -239,6 +256,8 @@ class GameScene extends Phaser.Scene {
     this.updateToolVisuals()
     this.cleaningSound = this.audio.sound('cleaning', { loop: true, volume: 1 })
     this.bubblesSound = this.audio.sound('bubbles', { loop: true, volume: 1 })
+    this.clothSound = this.audio.sound('clothWipe', { loop: true, volume: 1 })
+    
     this.events.on('update', this.updateGame, this)
     this.input.on('pointerdown', this.beginCleaning, this)
     this.input.on('pointermove', this.moveCleaning, this)
@@ -253,22 +272,39 @@ class GameScene extends Phaser.Scene {
 
   selectTool(tool) {
     if (this.state !== 'gameplay') return
+    
+    // Enforce sequential gamification rules
+    if (tool === 'brush' && this.cleanedAmount < 20) {
+      this.toolLabel.setText('Use Sponge first!')
+      return
+    }
+    if (tool === 'washCloth' && this.cleanedAmount < 50) {
+      this.toolLabel.setText('Reach 50% clean with Brush first!')
+      return
+    }
+
     this.tool = tool
-    this.cursor.setTexture(tool === 'brush' ? 'brush' : 'sponge')
-    this.toolLabel.setText(`${tool === 'brush' ? 'Brush' : 'Sponge'} selected`)
+    const toolNameMap = { sponge: 'Sponge', brush: 'Brush', washCloth: 'Wash Cloth' }
+    this.cursor.setTexture(tool === 'brush' ? 'brush' : tool === 'sponge' ? 'sponge' : 'washCloth')
+    this.toolLabel.setText(`${toolNameMap[tool]} selected`)
     this.updateToolVisuals()
   }
 
   updateToolVisuals() {
-    this.brushButton.setScale(this.tool === 'brush' ? 0.22 : 0.16).setAlpha(this.tool === 'brush' ? 1 : 0.45)
     this.spongeButton.setScale(this.tool === 'sponge' ? 0.22 : 0.16).setAlpha(this.tool === 'sponge' ? 1 : 0.45)
+    this.brushButton.setScale(this.tool === 'brush' ? 0.22 : 0.16).setAlpha(this.tool === 'brush' ? 1 : 0.45)
+    this.clothButton.setScale(this.tool === 'washCloth' ? 0.22 : 0.16).setAlpha(this.tool === 'washCloth' ? 1 : 0.45)
   }
 
   beginCleaning(pointer) {
     if (this.state !== 'gameplay' || !this.isOnShoe(pointer)) return
     this.isPointerHeld = true
     this.lastPointer = pointer
-    const sound = this.tool === 'brush' ? this.cleaningSound : this.bubblesSound
+    
+    let sound = this.bubblesSound
+    if (this.tool === 'brush') sound = this.cleaningSound
+    if (this.tool === 'washCloth') sound = this.clothSound
+
     if (!sound.isPlaying) sound.play()
     this.scrub(pointer)
   }
@@ -291,6 +327,7 @@ class GameScene extends Phaser.Scene {
     this.lastBrushPoint = null
     this.cleaningSound?.stop()
     this.bubblesSound?.stop()
+    this.clothSound?.stop()
   }
 
   isOnShoe(pointer) {
@@ -302,20 +339,70 @@ class GameScene extends Phaser.Scene {
       this.addFoam(pointer)
       return
     }
+
+    // Restrict brush usage past 50% until wash cloth is unlocked
+    if (this.tool === 'brush' && this.cleanedAmount >= 50) {
+      this.toolLabel.setText('Switch to Wash Cloth to finish!')
+      return
+    }
+
     const localX = Phaser.Math.Clamp((pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     const localY = Phaser.Math.Clamp((pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
-    this.eraseLayer(this.dirtCanvas, localX, localY, 108, this.lastBrushPoint)
+    this.eraseLayer(this.dirtCanvas, localX, localY, this.tool === 'washCloth' ? 130 : 108, this.lastBrushPoint)
+    
     this.foamClouds = this.foamClouds.filter((cloud) => {
       const hit = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, cloud.x, cloud.y) < 72
       if (hit) cloud.destroy()
       return !hit
     })
+
     this.lastBrushPoint = { x: localX, y: localY }
     const remaining = this.countOpaquePixels(this.dirtCanvas)
-    this.cleanedAmount = Math.min(100, (this.initialDirtPixels - remaining) / this.initialDirtPixels * 100)
+    
+    let rawCleaned = (this.initialDirtPixels - remaining) / this.initialDirtPixels * 100
+    
+    // Gate progress milestones for structured multi-tool gameplay
+    if (this.tool === 'brush') {
+      this.cleanedAmount = Math.min(50, rawCleaned)
+    } else if (this.tool === 'washCloth') {
+      this.cleanedAmount = Math.min(100, Math.max(50, rawCleaned))
+    }
+
     this.progressFull.setCrop(0, 0, 924 * this.cleanedAmount / 100, 88)
     this.progressLabel.setText(`${Math.floor(this.cleanedAmount)}% Clean`)
-    if (remaining === 0) this.completeRound()
+
+    // Milestone coin reward checkpoints
+    if (this.cleanedAmount >= 50 && !this.rewardedMilestone50) {
+      this.rewardedMilestone50 = true
+      this.awardCoins(50, 'Brush Milestone Reached!')
+    }
+
+    if (this.cleanedAmount >= 100 || remaining === 0) {
+      if (!this.rewardedMilestone100) {
+        this.rewardedMilestone100 = true
+        this.awardCoins(100, 'Fully Cleaned!')
+      }
+      this.completeRound()
+    }
+  }
+
+  awardCoins(amount, message) {
+    this.totalCoins += amount
+    this.coinText.setText(`${this.totalCoins}`)
+    this.audio.sound('coinPop', { volume: 0.9 }).play()
+    
+    const popupText = this.add.text(WIDTH / 2, HEIGHT / 2 - 100, `+${amount} Coins\n${message}`, {
+      fontFamily: 'Mochiy Pop One', fontSize: '20px', color: '#ffd84d', align: 'center', stroke: '#000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(2000)
+
+    this.tweens.add({
+      targets: popupText,
+      y: popupText.y - 60,
+      alpha: 0,
+      duration: 1200,
+      ease: 'Quad.easeOut',
+      onComplete: () => popupText.destroy()
+    })
   }
 
   addFoam(pointer) {
@@ -325,6 +412,11 @@ class GameScene extends Phaser.Scene {
     const cloud = this.add.image(x, y, 'bubbles').setDisplaySize(150, 150).setAlpha(0.35).setDepth(3)
     this.foamCoverage = Math.min(100, this.foamCoverage + 1.2)
     this.foamClouds.push(cloud)
+
+    if (this.foamCoverage >= 50 && !this.rewardedSponge) {
+      this.rewardedSponge = true
+      this.awardCoins(25, 'Sponge Foam Applied!')
+    }
   }
 
   eraseLayer(texture, x, y, radius, previous) {
