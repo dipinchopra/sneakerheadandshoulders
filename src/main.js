@@ -20,13 +20,16 @@ const STAGES = [
 ]
 const BASE = import.meta.env.BASE_URL
 const asset = (path) => `${BASE}${path.split('/').map(encodeURIComponent).join('/')}`
-let fontLoading = false
+let gameFontPromise
 const loadGameFont = () => {
-  if (fontLoading || document.fonts.check('16px "Mochiy Pop One"')) return
-  fontLoading = true
-  new FontFace('Mochiy Pop One', `url(${asset('assets/UI Assets/Font/Mochiy_Pop_One/MochiyPopOne-Regular.ttf')})`).load()
-    .then((font) => document.fonts.add(font))
-    .catch(() => {})
+  if (gameFontPromise) return gameFontPromise
+  gameFontPromise = new FontFace('Mochiy Pop One', `url(${asset('assets/UI Assets/Font/Mochiy_Pop_One/MochiyPopOne-Regular.ttf')})`).load()
+    .then((font) => {
+      document.fonts.add(font)
+      return true
+    })
+    .catch(() => false)
+  return gameFontPromise
 }
 
 const shoes = [1, 2, 3, 4].map((number) => ({
@@ -76,12 +79,6 @@ const audioFiles = {
   success: 'assets/audio/success-v2.wav',
   clothSfx: clothSfxUrl,
 }
-
-const startFileKeys = ['startBg', 'startLogo', 'play', 'close']
-const gameplayFileKeys = Object.keys(files).filter((key) => ![
-  'loadingBg', 'loadingLogo', 'loadingEmpty', 'loadingFull', ...startFileKeys,
-].includes(key))
-const gameplayAudioKeys = Object.keys(audioFiles).filter((key) => !['menu', 'click'].includes(key))
 
 class AudioManager {
   constructor(scene) {
@@ -139,22 +136,29 @@ class LoadingScene extends Phaser.Scene {
     this.loadingFill.setCrop(0, 0, 0, 88)
     this.loadingText = this.add.text(WIDTH / 2, 735, 'Loading...', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff' }).setOrigin(0.5)
     this.percentText = this.add.text(WIDTH / 2, 830, '0%', { fontFamily: 'Mochiy Pop One', fontSize: '20px', color: '#fff' }).setOrigin(0.5)
+    this.loadingStartedAt = this.time.now
     loadGameFont()
     this.loadAssets()
   }
 
   loadAssets() {
-    startFileKeys.forEach((key) => {
-      const path = files[key]
+    Object.entries(files).forEach(([key, path]) => {
       if (!this.textures.exists(key)) this.load.image(key, asset(path))
     })
-    ;['menu', 'click'].forEach((key) => this.load.audio(key, asset(audioFiles[key])))
+    this.load.image('cloth', clothUrl)
+    this.load.image('coin', coinUrl)
+    this.load.image('shoe0Clean', shoes[0].clean)
+    this.load.image('shoe0Dirty', shoes[0].dirty)
+    Object.entries(audioFiles).forEach(([key, path]) => this.load.audio(key, key === 'clothSfx' ? path : asset(path)))
     this.load.on('progress', (value) => {
       const percent = Math.floor(value * 100)
       this.percentText.setText(`${percent}%`)
       this.loadingFill.setCrop(0, 0, 924 * value, 88)
     })
-    this.load.once('complete', () => this.scene.start('GameScene'))
+    this.load.once('complete', () => {
+      const remainingDisplayTime = Math.max(0, 1800 - (this.time.now - this.loadingStartedAt))
+      this.time.delayedCall(remainingDisplayTime, () => this.scene.start('GameScene'))
+    })
     this.load.start()
   }
 }
@@ -164,6 +168,14 @@ class StudioScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#000000')
+    loadGameFont().then((fontLoaded) => this.showStudioName(fontLoaded))
+  }
+
+  showStudioName(fontLoaded) {
+    if (!fontLoaded) {
+      this.time.delayedCall(2000, () => this.scene.start('LoadingScene'))
+      return
+    }
     const studioName = this.add.text(WIDTH / 2, HEIGHT / 2, 'Vidi', {
       fontFamily: 'Mochiy Pop One', fontSize: '72px', color: '#ffffff', letterSpacing: 4,
     }).setOrigin(0.5).setAlpha(0)
@@ -214,6 +226,10 @@ class GameScene extends Phaser.Scene {
     graphics.destroy()
   }
 
+  setPointerVisible(visible) {
+    this.game.canvas.style.cursor = visible ? 'default' : 'none'
+  }
+
   clearScene() {
     this.input.off('pointerdown', this.beginCleaning, this)
     this.input.off('pointermove', this.moveCleaning, this)
@@ -224,29 +240,16 @@ class GameScene extends Phaser.Scene {
   showStart() {
     this.clearScene()
     this.state = 'start'
+    this.setPointerVisible(true)
     this.audio.playMusic('menu')
     const startBackground = this.add.image(WIDTH / 2, HEIGHT / 2, 'startBg').setDisplaySize(WIDTH, HEIGHT).setInteractive()
     // Browsers unlock audio on the first touch/click, so retry the start music then.
     startBackground.on('pointerdown', () => this.audio.playMusic('menu'))
     this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
     const play = this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
-      .on('pointerdown', () => { this.audio.playClick(); this.prepareFirstRound() })
+      .on('pointerdown', () => { this.audio.playClick(); this.startRound(0) })
     this.addPressFeedback(play)
     this.add.image(545, 45, 'close').setDisplaySize(34, 34)
-  }
-
-  prepareFirstRound() {
-    if (this.isPreparing) return
-    this.isPreparing = true
-    const overlay = this.add.container(0, 0).setDepth(20)
-    overlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x07182a, 0.88))
-    overlay.add(this.add.text(WIDTH / 2, 450, 'PREPARING ROUND...', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff' }).setOrigin(0.5))
-    const status = this.add.text(WIDTH / 2, 495, '0%', { fontFamily: 'Mochiy Pop One', fontSize: '17px', color: '#9de8ff' }).setOrigin(0.5)
-    this.loadGameplayAssets(0, () => {
-      overlay.destroy()
-      this.isPreparing = false
-      this.startRound(0)
-    }, (value) => status.setText(`${Math.floor(value * 100)}%`))
   }
 
   startRound(index) {
@@ -281,26 +284,8 @@ class GameScene extends Phaser.Scene {
     this.load.start()
   }
 
-  loadGameplayAssets(index, onComplete, onProgress) {
-    gameplayFileKeys.forEach((key) => {
-      if (!this.textures.exists(key)) this.load.image(key, asset(files[key]))
-    })
-    if (!this.textures.exists('cloth')) this.load.image('cloth', clothUrl)
-    if (!this.textures.exists('coin')) this.load.image('coin', coinUrl)
-    this.load.image(`shoe${index}Clean`, shoes[index].clean)
-    this.load.image(`shoe${index}Dirty`, shoes[index].dirty)
-    gameplayAudioKeys.forEach((key) => {
-      if (!this.cache.audio.exists(key)) this.load.audio(key, key === 'clothSfx' ? audioFiles[key] : asset(audioFiles[key]))
-    })
-    if (onProgress) this.load.on('progress', onProgress)
-    this.load.once('complete', () => {
-      if (onProgress) this.load.off('progress', onProgress)
-      onComplete()
-    })
-    this.load.start()
-  }
-
   createGameplay() {
+    this.setPointerVisible(false)
     this.add.image(WIDTH / 2, HEIGHT / 2, 'gameplayBg').setDisplaySize(WIDTH, HEIGHT)
     this.pauseButton = this.add.image(530, 46, 'gameplayPause').setDisplaySize(44, 44).setInteractive()
       .on('pointerdown', () => { this.audio.playClick(); this.openPause() })
@@ -351,11 +336,11 @@ class GameScene extends Phaser.Scene {
 
   createStageProgress() {
     this.stageMarkers = []
-    const starts = [73, 73 + 430 * 0.25, 73 + 430 * 0.5]
-    const widths = [430 * 0.25, 430 * 0.25, 430 * 0.5]
+    const barLeft = 73
+    const barWidth = 430
+    const milestoneProgress = [0, 0.25, 0.5]
     STAGES.forEach((stage, index) => {
-      if (index > 0) this.add.rectangle(starts[index], 142, 3, 34, 0xffffff, 0.72)
-      const x = starts[index] + widths[index] / 2
+      const x = barLeft + barWidth * milestoneProgress[index]
       const marker = this.add.container(x, 142).setDepth(4)
       const circle = this.add.circle(0, 0, 22, 0xffffff).setStrokeStyle(3, 0x1b5b82)
       const icon = this.add.image(0, 0, stage.key).setDisplaySize(28, 28)
@@ -384,6 +369,7 @@ class GameScene extends Phaser.Scene {
     }
     this.tool = tool
     this.awaitingTool = false
+    this.setPointerVisible(false)
     this.cursor.setTexture(tool).setVisible(false)
     this.toolLabel.setText(tool === 'sponge' ? 'Add soap with the sponge' : tool === 'brush' ? 'Scrub the dirt to 50%' : 'Wipe the remaining dirt with the cloth')
     this.updateToolVisuals()
@@ -505,6 +491,7 @@ class GameScene extends Phaser.Scene {
     marker.icon.setVisible(false)
     marker.circle.setFillStyle(0x8dffad).setStrokeStyle(3, 0x198f4b)
     marker.tick.setVisible(true)
+    if (stage.key === 'brush') this.clearFoam()
     const isFinalStage = finishedIndex === STAGES.length - 1
     this.awardCoins(stage, isFinalStage ? () => this.completeRound() : null)
     this.releaseCleaning()
@@ -513,16 +500,25 @@ class GameScene extends Phaser.Scene {
       this.dirtCanvas.refresh()
       this.updateProgress()
       this.state = 'celebrating'
+      this.setPointerVisible(true)
       return
     }
     this.stageIndex += 1
     this.tool = null
     this.awaitingTool = true
+    this.setPointerVisible(true)
     this.cursor.setVisible(false)
     const nextStage = STAGES[this.stageIndex]
     this.toolLabel.setText(`Tap ${nextStage.label} to continue`)
     this.updateToolVisuals()
     this.updateProgress()
+  }
+
+  clearFoam() {
+    this.foamClouds.forEach((cloud) => {
+      this.tweens.add({ targets: cloud, alpha: 0, scaleX: 0.75, scaleY: 0.75, duration: 180, onComplete: () => cloud.destroy() })
+    })
+    this.foamClouds = []
   }
 
   awardCoins(stage, onComplete) {
@@ -546,14 +542,14 @@ class GameScene extends Phaser.Scene {
     const walletX = 46 - WIDTH / 2
     const walletY = 66 - 470
     for (let index = 0; index < amount; index += 1) {
-      const coin = this.add.image(Phaser.Math.Between(-110, 110), Phaser.Math.Between(28, 82), 'coin').setDisplaySize(22, 22)
+      const coin = this.add.image(Phaser.Math.Between(-110, 110), Phaser.Math.Between(28, 82), 'coin').setDisplaySize(30, 30)
       overlay.add(coin)
       this.tweens.add({
         targets: coin,
         x: walletX,
         y: walletY,
-        scaleX: 0.45,
-        scaleY: 0.45,
+        scaleX: 0.6,
+        scaleY: 0.6,
         duration: 540,
         delay: 620 + index * 42,
         ease: 'Cubic.easeIn',
@@ -589,9 +585,9 @@ class GameScene extends Phaser.Scene {
   }
 
   playClothSwipe(force = false) {
-    if (!force && this.time.now - this.lastClothSfxAt < 70) return
+    if (!force && this.time.now - this.lastClothSfxAt < 250) return
     this.lastClothSfxAt = this.time.now
-    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 1, rate: 1.08 })
+    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 0.7, rate: 1.08 })
   }
 
   eraseLayer(texture, x, y, radius, previous) {
@@ -616,6 +612,7 @@ class GameScene extends Phaser.Scene {
   completeRound() {
     if (this.state !== 'gameplay' && this.state !== 'celebrating') return
     this.state = 'result'
+    this.setPointerVisible(true)
     this.releaseCleaning()
     this.dirtyShoe.setVisible(false)
     this.audio.stopMusic()
@@ -668,6 +665,7 @@ class GameScene extends Phaser.Scene {
   openPause() {
     if (this.state !== 'gameplay') return
     this.state = 'pause'
+    this.setPointerVisible(true)
     this.pauseStartedAt = this.time.now
     this.releaseCleaning()
     this.audio.stopMusic()
@@ -702,6 +700,7 @@ class GameScene extends Phaser.Scene {
     this.pauseOverlay?.destroy()
     this.pauseOverlay = null
     this.state = 'gameplay'
+    this.setPointerVisible(!this.tool || this.awaitingTool)
     this.audio.playMusic('gameplay')
   }
 
