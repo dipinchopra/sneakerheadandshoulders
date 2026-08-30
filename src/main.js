@@ -11,8 +11,8 @@ const SHOE_X = WIDTH / 2
 const SHOE_Y = 480
 const SPONGE_TARGET = 100
 const FOAM_STEP = 0.6
-const BRUSH_RADIUS = 46
-const CLOTH_RADIUS = 78
+const BRUSH_RADIUS = 26
+const CLOTH_RADIUS = 64
 const STAGES = [
   { key: 'sponge', label: 'SOAP', reward: 10, end: 25 },
   { key: 'brush', label: 'SCRUB', reward: 15, end: 50 },
@@ -146,6 +146,26 @@ class LoadingScene extends Phaser.Scene {
     })
     this.load.once('complete', () => this.scene.start('GameScene'))
     this.load.start()
+  }
+}
+
+class StudioScene extends Phaser.Scene {
+  constructor() { super('StudioScene') }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#000000')
+    const studioName = this.add.text(WIDTH / 2, HEIGHT / 2, 'Vidi', {
+      fontFamily: 'Mochiy Pop One', fontSize: '72px', color: '#ffffff', letterSpacing: 4,
+    }).setOrigin(0.5).setAlpha(0)
+    this.tweens.add({
+      targets: studioName,
+      alpha: 1,
+      duration: 500,
+      ease: 'Sine.easeOut',
+      yoyo: true,
+      hold: 1000,
+      onComplete: () => this.scene.start('LoadingScene'),
+    })
   }
 }
 
@@ -286,15 +306,20 @@ class GameScene extends Phaser.Scene {
   }
 
   createStageProgress() {
-    this.stageTicks = []
+    this.stageMarkers = []
     const starts = [73, 73 + 430 * 0.25, 73 + 430 * 0.5]
     const widths = [430 * 0.25, 430 * 0.25, 430 * 0.5]
     STAGES.forEach((stage, index) => {
-      if (index > 0) this.add.rectangle(starts[index], 142, 3, 34, 0xffffff, 0.9)
-      this.add.text(starts[index] + widths[index] / 2, 115, stage.label, { fontFamily: 'Mochiy Pop One', fontSize: '11px', color: '#fff', stroke: '#163f5d', strokeThickness: 3 }).setOrigin(0.5)
-      this.stageTicks.push(this.add.text(starts[index] + widths[index] - 13, 142, '✓', { fontFamily: 'Arial', fontStyle: 'bold', fontSize: '21px', color: '#fff', stroke: '#16883c', strokeThickness: 5 }).setOrigin(0.5).setVisible(false))
+      if (index > 0) this.add.rectangle(starts[index], 142, 3, 34, 0xffffff, 0.72)
+      const x = starts[index] + widths[index] / 2
+      const marker = this.add.container(x, 142).setDepth(4)
+      const circle = this.add.circle(0, 0, 22, 0xffffff).setStrokeStyle(3, 0x1b5b82)
+      const icon = this.add.image(0, 0, stage.key).setDisplaySize(28, 28)
+      const tick = this.add.text(0, 0, '✓', { fontFamily: 'Arial', fontStyle: 'bold', fontSize: '24px', color: '#fff', stroke: '#198f4b', strokeThickness: 6 }).setOrigin(0.5).setVisible(false)
+      marker.add([circle, icon, tick])
+      this.stageMarkers.push({ circle, icon, tick })
     })
-    this.progressLabel = this.add.text(WIDTH / 2, 175, 'SOAP • 0%', { fontFamily: 'Mochiy Pop One', fontSize: '14px', color: '#fff', stroke: '#163f5d', strokeThickness: 3 }).setOrigin(0.5)
+    this.progressLabel = this.add.text(WIDTH / 2, 184, 'SOAP • 0%', { fontFamily: 'Mochiy Pop One', fontSize: '14px', color: '#fff', stroke: '#163f5d', strokeThickness: 3 }).setOrigin(0.5)
   }
 
   updateGame(_time, delta) {
@@ -378,7 +403,10 @@ class GameScene extends Phaser.Scene {
     }
     const localX = Phaser.Math.Clamp((pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     const localY = Phaser.Math.Clamp((pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
-    this.eraseLayer(this.dirtCanvas, localX, localY, this.tool === 'cloth' ? CLOTH_RADIUS : BRUSH_RADIUS, this.lastBrushPoint)
+    const previousPoint = this.lastBrushPoint && Phaser.Math.Distance.Between(localX, localY, this.lastBrushPoint.x, this.lastBrushPoint.y) <= 72
+      ? this.lastBrushPoint
+      : null
+    this.eraseLayer(this.dirtCanvas, localX, localY, this.tool === 'cloth' ? CLOTH_RADIUS : BRUSH_RADIUS, previousPoint)
     this.foamClouds = this.foamClouds.filter((cloud) => {
       const hit = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, cloud.x, cloud.y) < 72
       if (hit) cloud.destroy()
@@ -414,6 +442,12 @@ class GameScene extends Phaser.Scene {
   updateProgress() {
     this.progressFull.setCrop(0, 0, 924 * this.cleanedAmount / 100, 88)
     this.progressLabel.setText(`${STAGES[this.stageIndex].label} • ${Math.floor(this.cleanedAmount)}%`)
+    this.stageMarkers.forEach((marker, index) => {
+      if (this.completedStages.has(index)) return
+      const active = index === this.stageIndex
+      marker.circle.setStrokeStyle(active ? 4 : 3, active ? 0xffd45d : 0x1b5b82)
+      marker.icon.setAlpha(active ? 1 : 0.45)
+    })
   }
 
   finishStage() {
@@ -422,14 +456,18 @@ class GameScene extends Phaser.Scene {
     const stage = STAGES[finishedIndex]
     this.completedStages.add(finishedIndex)
     this.cleanedAmount = stage.end
-    this.stageTicks[finishedIndex].setVisible(true)
-    this.awardCoins(stage)
+    const marker = this.stageMarkers[finishedIndex]
+    marker.icon.setVisible(false)
+    marker.circle.setFillStyle(0x8dffad).setStrokeStyle(3, 0x198f4b)
+    marker.tick.setVisible(true)
+    const isFinalStage = finishedIndex === STAGES.length - 1
+    this.awardCoins(stage, isFinalStage ? () => this.completeRound() : null)
     this.releaseCleaning()
-    if (finishedIndex === STAGES.length - 1) {
+    if (isFinalStage) {
       this.dirtCanvas.getContext().clearRect(0, 0, 1024, 1024)
       this.dirtCanvas.refresh()
       this.updateProgress()
-      this.time.delayedCall(350, () => this.completeRound())
+      this.state = 'celebrating'
       return
     }
     this.stageIndex += 1
@@ -442,15 +480,13 @@ class GameScene extends Phaser.Scene {
     this.updateProgress()
   }
 
-  awardCoins(stage) {
+  awardCoins(stage, onComplete) {
     const { reward: amount, label } = stage
     this.roundCoins += amount
-    this.totalCoins += amount
-    this.coinText.setText(String(this.totalCoins))
-    this.showStageReward(label, amount)
+    this.showStageReward(label, amount, onComplete)
   }
 
-  showStageReward(label, amount) {
+  showStageReward(label, amount, onComplete) {
     const overlay = this.add.container(WIDTH / 2, 470).setDepth(30).setScale(0.65).setAlpha(0)
     const panel = this.add.graphics()
     panel.fillStyle(0x163f5d, 0.95)
@@ -459,34 +495,43 @@ class GameScene extends Phaser.Scene {
     panel.strokeRoundedRect(-205, -102, 410, 204, 28)
     const title = this.add.text(0, -48, 'TASK COMPLETE!', { fontFamily: 'Mochiy Pop One', fontSize: '27px', color: '#fff' }).setOrigin(0.5)
     const detail = this.add.text(0, -8, `${label} MASTERED`, { fontFamily: 'Mochiy Pop One', fontSize: '15px', color: '#9de8ff' }).setOrigin(0.5)
-    const coin = this.add.image(-48, 52, 'coin').setDisplaySize(48, 48)
-    const reward = this.add.text(0, 53, `+${amount} COINS`, { fontFamily: 'Mochiy Pop One', fontSize: '24px', color: '#ffe66b', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0, 0.5)
-    overlay.add([panel, title, detail, coin, reward])
+    const reward = this.add.text(0, 53, `+${amount} COINS`, { fontFamily: 'Mochiy Pop One', fontSize: '24px', color: '#ffe66b', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0.5)
+    overlay.add([panel, title, detail, reward])
     this.tweens.add({ targets: overlay, scaleX: 1, scaleY: 1, alpha: 1, duration: 240, ease: 'Back.easeOut' })
-    this.tweens.add({
-      targets: coin,
-      x: 46 - WIDTH / 2,
-      y: 66 - 470,
-      scaleX: 0.55,
-      scaleY: 0.55,
-      duration: 950,
-      delay: 950,
-      ease: 'Cubic.easeIn',
-    })
-    this.tweens.add({
-      targets: [this.coinIcon, this.coinText],
-      scaleX: 1.35,
-      scaleY: 1.35,
-      duration: 180,
-      delay: 1800,
-      yoyo: true,
-    })
+    const walletX = 46 - WIDTH / 2
+    const walletY = 66 - 470
+    for (let index = 0; index < amount; index += 1) {
+      const coin = this.add.image(Phaser.Math.Between(-110, 110), Phaser.Math.Between(28, 82), 'coin').setDisplaySize(22, 22)
+      overlay.add(coin)
+      this.tweens.add({
+        targets: coin,
+        x: walletX,
+        y: walletY,
+        scaleX: 0.45,
+        scaleY: 0.45,
+        duration: 540,
+        delay: 620 + index * 42,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          this.totalCoins += 1
+          this.coinText.setText(String(this.totalCoins))
+          coin.destroy()
+          if (index % 4 === 0 || index === amount - 1) {
+            this.tweens.add({ targets: [this.coinIcon, this.coinText], scaleX: 1.22, scaleY: 1.22, duration: 110, yoyo: true })
+          }
+        },
+      })
+    }
+    const celebrationDuration = 620 + (amount - 1) * 42 + 540
     this.tweens.add({
       targets: overlay,
       alpha: 0,
       duration: 260,
-      delay: 2100,
-      onComplete: () => overlay.destroy(),
+      delay: celebrationDuration + 220,
+      onComplete: () => {
+        overlay.destroy()
+        onComplete?.()
+      },
     })
   }
 
@@ -516,7 +561,7 @@ class GameScene extends Phaser.Scene {
   }
 
   completeRound() {
-    if (this.state !== 'gameplay') return
+    if (this.state !== 'gameplay' && this.state !== 'celebrating') return
     this.state = 'result'
     this.releaseCleaning()
     this.dirtyShoe.setVisible(false)
@@ -659,5 +704,5 @@ new Phaser.Game({
   parent: 'game-container',
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, width: WIDTH, height: HEIGHT },
-  scene: [LoadingScene, GameScene],
+  scene: [StudioScene, LoadingScene, GameScene],
 })
