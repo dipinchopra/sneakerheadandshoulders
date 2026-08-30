@@ -10,6 +10,9 @@ const SHOE_SIZE = 500
 const SHOE_X = WIDTH / 2
 const SHOE_Y = 480
 const SPONGE_TARGET = 100
+const FOAM_STEP = 0.6
+const BRUSH_RADIUS = 46
+const CLOTH_RADIUS = 78
 const STAGES = [
   { key: 'sponge', label: 'SOAP', reward: 10, end: 25 },
   { key: 'brush', label: 'SCRUB', reward: 15, end: 50 },
@@ -93,7 +96,7 @@ class AudioManager {
   playMusic(key) {
     if (this.music?.key === key && this.music.isPlaying) return
     this.stopMusic()
-    this.music = this.scene.sound.add(key, { loop: true, volume: 0.18 })
+    this.music = this.scene.sound.add(key, { loop: true, volume: 0.06 })
     this.music.play()
   }
 
@@ -218,6 +221,7 @@ class GameScene extends Phaser.Scene {
     this.pausedAt = 0
     this.pauseStartedAt = 0
     this.lastBrushPoint = null
+    this.lastFoamPoint = null
     this.foamClouds = []
     this.foamCoverage = 0
     this.isPointerHeld = false
@@ -249,22 +253,36 @@ class GameScene extends Phaser.Scene {
     this.initialDirtPixels = this.countOpaquePixels(this.dirtCanvas)
     this.dirtyShoe = this.add.image(SHOE_X, SHOE_Y, this.dirtCanvas.key).setDisplaySize(SHOE_SIZE, SHOE_SIZE)
     this.foamClouds = []
-    this.spongeButton = this.add.image(115, 850, 'sponge').setScale(0.15)
-    this.brushButton = this.add.image(288, 850, 'brush').setScale(0.15)
-    this.clothButton = this.add.image(461, 850, 'cloth').setScale(0.15)
-    ;[this.spongeButton, this.brushButton, this.clothButton].forEach((button) => this.addPressFeedback(button))
+    this.createToolCards()
     this.tool = 'sponge'
-    this.toolLabel = this.add.text(WIDTH / 2, 942, 'Add soap with the sponge', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
-    this.coinIcon = this.add.image(470, 72, 'coin').setDisplaySize(36, 36)
-    this.coinText = this.add.text(495, 72, String(this.totalCoins), { fontFamily: 'Mochiy Pop One', fontSize: '19px', color: '#fff', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0, 0.5)
+    this.toolLabel = this.add.text(WIDTH / 2, 965, 'Add soap with the sponge', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
+    this.coinIcon = this.add.image(46, 66, 'coin').setDisplaySize(38, 38).setDepth(8)
+    this.coinText = this.add.text(72, 66, String(this.totalCoins), { fontFamily: 'Mochiy Pop One', fontSize: '19px', color: '#fff', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0, 0.5).setDepth(8)
     this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(6).setVisible(false)
     this.updateToolVisuals()
+    // Music sits deliberately behind the action; cleaning is the main tactile feedback.
     this.cleaningSound = this.audio.sound('cleaning', { loop: true, volume: 1 })
     this.bubblesSound = this.audio.sound('bubbles', { loop: true, volume: 1 })
     this.lastClothSfxAt = 0
     this.events.on('update', this.updateGame, this)
     this.input.on('pointerdown', this.beginCleaning, this)
     this.input.on('pointermove', this.moveCleaning, this)
+  }
+
+  createToolCards() {
+    this.toolCards = {}
+    const positions = { sponge: 105, brush: 288, cloth: 471 }
+    STAGES.forEach((stage, index) => {
+      const container = this.add.container(positions[stage.key], 850).setSize(148, 138).setInteractive()
+      const background = this.add.graphics()
+      const icon = this.add.image(0, -12, stage.key).setDisplaySize(82, 82)
+      const label = this.add.text(0, 48, stage.label, { fontFamily: 'Mochiy Pop One', fontSize: '13px', color: '#fff' }).setOrigin(0.5)
+      const status = this.add.text(54, -48, index === 0 ? '' : '🔒', { fontFamily: 'Arial', fontSize: '18px', color: '#fff' }).setOrigin(0.5)
+      container.add([background, icon, label, status])
+      container.on('pointerdown', () => this.selectTool(stage.key))
+      this.addPressFeedback(container)
+      this.toolCards[stage.key] = { container, background, icon, status, index }
+    })
   }
 
   createStageProgress() {
@@ -282,16 +300,45 @@ class GameScene extends Phaser.Scene {
   updateGame(_time, delta) {
     if (this.state !== 'gameplay') return
     this.elapsed = Math.max(0, this.time.now - this.startTime - this.pausedAt)
-    if (this.isPointerHeld && this.lastPointer) this.scrub(this.lastPointer)
+  }
+
+  selectTool(tool) {
+    if (this.state !== 'gameplay') return
+    const selectedIndex = STAGES.findIndex((stage) => stage.key === tool)
+    if (selectedIndex > this.stageIndex) {
+      this.toolLabel.setText(`${STAGES[selectedIndex].label} is still locked`)
+      return
+    }
+    if (selectedIndex < this.stageIndex) {
+      this.toolLabel.setText(`${STAGES[selectedIndex].label} is already complete`)
+      return
+    }
+    this.tool = tool
+    this.awaitingTool = false
+    this.cursor.setTexture(tool).setVisible(false)
+    this.toolLabel.setText(tool === 'sponge' ? 'Add soap with the sponge' : tool === 'brush' ? 'Scrub the dirt to 50%' : 'Wipe the remaining dirt with the cloth')
+    this.updateToolVisuals()
   }
 
   updateToolVisuals() {
-    const buttons = { sponge: this.spongeButton, brush: this.brushButton, cloth: this.clothButton }
-    Object.entries(buttons).forEach(([key, button]) => button.setScale(key === this.tool ? 0.2 : 0.14).setAlpha(key === this.tool ? 1 : 0.35))
+    Object.entries(this.toolCards).forEach(([key, card]) => {
+      const complete = card.index < this.stageIndex || this.completedStages.has(card.index)
+      const locked = card.index > this.stageIndex
+      const active = key === this.tool && !this.awaitingTool
+      card.background.clear()
+      card.background.fillStyle(active ? 0x1d90d0 : complete ? 0x218f55 : locked ? 0x405466 : 0x274f70, 0.96)
+      card.background.fillRoundedRect(-70, -65, 140, 130, 22)
+      card.background.lineStyle(active ? 5 : 3, active ? 0xffe66b : complete ? 0x73e59d : 0x9fc7df, 1)
+      card.background.strokeRoundedRect(-70, -65, 140, 130, 22)
+      card.icon.setAlpha(locked ? 0.55 : 1)
+      card.status.setText(complete ? '✓' : locked ? '🔒' : active ? '' : '!')
+      card.status.setColor(complete ? '#8dffad' : active ? '#fff' : '#ffe66b')
+      card.container.setScale(active ? 1.04 : 1)
+    })
   }
 
   beginCleaning(pointer) {
-    if (this.state !== 'gameplay' || !this.isOnShoe(pointer)) return
+    if (this.state !== 'gameplay' || this.awaitingTool || !this.tool || !this.isOnShoe(pointer)) return
     this.isPointerHeld = true
     this.lastPointer = pointer
     const sound = this.tool === 'brush' ? this.cleaningSound : this.tool === 'sponge' ? this.bubblesSound : null
@@ -307,12 +354,14 @@ class GameScene extends Phaser.Scene {
         this.lastSwipePoint = { x: pointer.worldX, y: pointer.worldY }
       }
       this.lastPointer = pointer
+      this.scrub(pointer)
     }
   }
 
   releaseCleaning() {
     this.isPointerHeld = false
     this.lastBrushPoint = null
+    this.lastFoamPoint = null
     this.lastSwipePoint = null
     this.cleaningSound?.stop()
     this.bubblesSound?.stop()
@@ -329,7 +378,7 @@ class GameScene extends Phaser.Scene {
     }
     const localX = Phaser.Math.Clamp((pointer.worldX - (SHOE_X - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
     const localY = Phaser.Math.Clamp((pointer.worldY - (SHOE_Y - SHOE_SIZE / 2)) / SHOE_SIZE * 1024, 0, 1024)
-    this.eraseLayer(this.dirtCanvas, localX, localY, this.tool === 'cloth' ? 145 : 82, this.lastBrushPoint)
+    this.eraseLayer(this.dirtCanvas, localX, localY, this.tool === 'cloth' ? CLOTH_RADIUS : BRUSH_RADIUS, this.lastBrushPoint)
     this.foamClouds = this.foamClouds.filter((cloud) => {
       const hit = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, cloud.x, cloud.y) < 72
       if (hit) cloud.destroy()
@@ -349,11 +398,13 @@ class GameScene extends Phaser.Scene {
   }
 
   addFoam(pointer) {
-    if (this.foamClouds.length >= 160) return
+    if (this.lastFoamPoint && Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.lastFoamPoint.x, this.lastFoamPoint.y) < 14) return
+    if (this.foamClouds.length >= 240) return
     const x = Phaser.Math.Clamp(pointer.worldX, SHOE_X - 235, SHOE_X + 235)
     const y = Phaser.Math.Clamp(pointer.worldY, SHOE_Y - 125, SHOE_Y + 125)
     const cloud = this.add.image(x, y, 'bubbles').setDisplaySize(150, 150).setAlpha(0.35).setDepth(3)
-    this.foamCoverage = Math.min(100, this.foamCoverage + 1.2)
+    this.lastFoamPoint = { x, y }
+    this.foamCoverage = Math.min(100, this.foamCoverage + FOAM_STEP)
     this.foamClouds.push(cloud)
     this.cleanedAmount = Math.min(25, this.foamCoverage / SPONGE_TARGET * 25)
     this.updateProgress()
@@ -372,7 +423,7 @@ class GameScene extends Phaser.Scene {
     this.completedStages.add(finishedIndex)
     this.cleanedAmount = stage.end
     this.stageTicks[finishedIndex].setVisible(true)
-    this.awardCoins(stage.reward)
+    this.awardCoins(stage)
     this.releaseCleaning()
     if (finishedIndex === STAGES.length - 1) {
       this.dirtCanvas.getContext().clearRect(0, 0, 1024, 1024)
@@ -382,26 +433,67 @@ class GameScene extends Phaser.Scene {
       return
     }
     this.stageIndex += 1
-    this.tool = STAGES[this.stageIndex].key
-    this.cursor.setTexture(this.tool)
-    this.toolLabel.setText(this.tool === 'brush' ? 'Scrub the dirt to 50%' : 'Wipe clean with the cloth')
+    this.tool = null
+    this.awaitingTool = true
+    this.cursor.setVisible(false)
+    const nextStage = STAGES[this.stageIndex]
+    this.toolLabel.setText(`Tap ${nextStage.label} to continue`)
     this.updateToolVisuals()
     this.updateProgress()
   }
 
-  awardCoins(amount) {
+  awardCoins(stage) {
+    const { reward: amount, label } = stage
     this.roundCoins += amount
     this.totalCoins += amount
     this.coinText.setText(String(this.totalCoins))
-    const reward = this.add.text(WIDTH / 2, 225, `+${amount} COINS`, { fontFamily: 'Mochiy Pop One', fontSize: '24px', color: '#ffe45c', stroke: '#7c4600', strokeThickness: 5 }).setOrigin(0.5).setDepth(8)
-    this.tweens.add({ targets: reward, y: 185, alpha: 0, duration: 900, ease: 'Cubic.easeOut', onComplete: () => reward.destroy() })
-    this.tweens.add({ targets: [this.coinIcon, this.coinText], scaleX: 1.25, scaleY: 1.25, duration: 120, yoyo: true })
+    this.showStageReward(label, amount)
+  }
+
+  showStageReward(label, amount) {
+    const overlay = this.add.container(WIDTH / 2, 470).setDepth(30).setScale(0.65).setAlpha(0)
+    const panel = this.add.graphics()
+    panel.fillStyle(0x163f5d, 0.95)
+    panel.fillRoundedRect(-205, -102, 410, 204, 28)
+    panel.lineStyle(6, 0xffe66b, 1)
+    panel.strokeRoundedRect(-205, -102, 410, 204, 28)
+    const title = this.add.text(0, -48, 'TASK COMPLETE!', { fontFamily: 'Mochiy Pop One', fontSize: '27px', color: '#fff' }).setOrigin(0.5)
+    const detail = this.add.text(0, -8, `${label} MASTERED`, { fontFamily: 'Mochiy Pop One', fontSize: '15px', color: '#9de8ff' }).setOrigin(0.5)
+    const coin = this.add.image(-48, 52, 'coin').setDisplaySize(48, 48)
+    const reward = this.add.text(0, 53, `+${amount} COINS`, { fontFamily: 'Mochiy Pop One', fontSize: '24px', color: '#ffe66b', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0, 0.5)
+    overlay.add([panel, title, detail, coin, reward])
+    this.tweens.add({ targets: overlay, scaleX: 1, scaleY: 1, alpha: 1, duration: 240, ease: 'Back.easeOut' })
+    this.tweens.add({
+      targets: coin,
+      x: 46 - WIDTH / 2,
+      y: 66 - 470,
+      scaleX: 0.55,
+      scaleY: 0.55,
+      duration: 950,
+      delay: 950,
+      ease: 'Cubic.easeIn',
+    })
+    this.tweens.add({
+      targets: [this.coinIcon, this.coinText],
+      scaleX: 1.35,
+      scaleY: 1.35,
+      duration: 180,
+      delay: 1800,
+      yoyo: true,
+    })
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0,
+      duration: 260,
+      delay: 2100,
+      onComplete: () => overlay.destroy(),
+    })
   }
 
   playClothSwipe() {
     if (this.time.now - this.lastClothSfxAt < 85) return
     this.lastClothSfxAt = this.time.now
-    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 0.8 })
+    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 1 })
   }
 
   eraseLayer(texture, x, y, radius, previous) {
