@@ -20,8 +20,14 @@ const STAGES = [
 ]
 const BASE = import.meta.env.BASE_URL
 const asset = (path) => `${BASE}${path.split('/').map(encodeURIComponent).join('/')}`
-new FontFace('Mochiy Pop One', `url(${asset('assets/UI Assets/Font/Mochiy_Pop_One/MochiyPopOne-Regular.ttf')})`).load()
-  .then((font) => document.fonts.add(font))
+let fontLoading = false
+const loadGameFont = () => {
+  if (fontLoading || document.fonts.check('16px "Mochiy Pop One"')) return
+  fontLoading = true
+  new FontFace('Mochiy Pop One', `url(${asset('assets/UI Assets/Font/Mochiy_Pop_One/MochiyPopOne-Regular.ttf')})`).load()
+    .then((font) => document.fonts.add(font))
+    .catch(() => {})
+}
 
 const shoes = [1, 2, 3, 4].map((number) => ({
   clean: asset(`assets/Art Assets/Shoes/${number}./clean.png`),
@@ -70,6 +76,12 @@ const audioFiles = {
   success: 'assets/audio/success-v2.wav',
   clothSfx: clothSfxUrl,
 }
+
+const startFileKeys = ['startBg', 'startLogo', 'play', 'close']
+const gameplayFileKeys = Object.keys(files).filter((key) => ![
+  'loadingBg', 'loadingLogo', 'loadingEmpty', 'loadingFull', ...startFileKeys,
+].includes(key))
+const gameplayAudioKeys = Object.keys(audioFiles).filter((key) => !['menu', 'click'].includes(key))
 
 class AudioManager {
   constructor(scene) {
@@ -127,18 +139,16 @@ class LoadingScene extends Phaser.Scene {
     this.loadingFill.setCrop(0, 0, 0, 88)
     this.loadingText = this.add.text(WIDTH / 2, 735, 'Loading...', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff' }).setOrigin(0.5)
     this.percentText = this.add.text(WIDTH / 2, 830, '0%', { fontFamily: 'Mochiy Pop One', fontSize: '20px', color: '#fff' }).setOrigin(0.5)
+    loadGameFont()
     this.loadAssets()
   }
 
   loadAssets() {
-    Object.entries(files).forEach(([key, path]) => {
+    startFileKeys.forEach((key) => {
+      const path = files[key]
       if (!this.textures.exists(key)) this.load.image(key, asset(path))
     })
-    this.load.image('cloth', clothUrl)
-    this.load.image('coin', coinUrl)
-    this.load.image('shoe0Clean', shoes[0].clean)
-    this.load.image('shoe0Dirty', shoes[0].dirty)
-    Object.entries(audioFiles).forEach(([key, path]) => this.load.audio(key, asset(path)))
+    ;['menu', 'click'].forEach((key) => this.load.audio(key, asset(audioFiles[key])))
     this.load.on('progress', (value) => {
       const percent = Math.floor(value * 100)
       this.percentText.setText(`${percent}%`)
@@ -220,9 +230,23 @@ class GameScene extends Phaser.Scene {
     startBackground.on('pointerdown', () => this.audio.playMusic('menu'))
     this.add.image(WIDTH / 2, 340, 'startLogo').setDisplaySize(260, 260)
     const play = this.add.image(WIDTH / 2, 815, 'play').setDisplaySize(230, 98).setInteractive()
-      .on('pointerdown', () => { this.audio.playClick(); this.startRound(0) })
+      .on('pointerdown', () => { this.audio.playClick(); this.prepareFirstRound() })
     this.addPressFeedback(play)
     this.add.image(545, 45, 'close').setDisplaySize(34, 34)
+  }
+
+  prepareFirstRound() {
+    if (this.isPreparing) return
+    this.isPreparing = true
+    const overlay = this.add.container(0, 0).setDepth(20)
+    overlay.add(this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x07182a, 0.88))
+    overlay.add(this.add.text(WIDTH / 2, 450, 'PREPARING ROUND...', { fontFamily: 'Mochiy Pop One', fontSize: '22px', color: '#fff' }).setOrigin(0.5))
+    const status = this.add.text(WIDTH / 2, 495, '0%', { fontFamily: 'Mochiy Pop One', fontSize: '17px', color: '#9de8ff' }).setOrigin(0.5)
+    this.loadGameplayAssets(0, () => {
+      overlay.destroy()
+      this.isPreparing = false
+      this.startRound(0)
+    }, (value) => status.setText(`${Math.floor(value * 100)}%`))
   }
 
   startRound(index) {
@@ -257,6 +281,25 @@ class GameScene extends Phaser.Scene {
     this.load.start()
   }
 
+  loadGameplayAssets(index, onComplete, onProgress) {
+    gameplayFileKeys.forEach((key) => {
+      if (!this.textures.exists(key)) this.load.image(key, asset(files[key]))
+    })
+    if (!this.textures.exists('cloth')) this.load.image('cloth', clothUrl)
+    if (!this.textures.exists('coin')) this.load.image('coin', coinUrl)
+    this.load.image(`shoe${index}Clean`, shoes[index].clean)
+    this.load.image(`shoe${index}Dirty`, shoes[index].dirty)
+    gameplayAudioKeys.forEach((key) => {
+      if (!this.cache.audio.exists(key)) this.load.audio(key, key === 'clothSfx' ? audioFiles[key] : asset(audioFiles[key]))
+    })
+    if (onProgress) this.load.on('progress', onProgress)
+    this.load.once('complete', () => {
+      if (onProgress) this.load.off('progress', onProgress)
+      onComplete()
+    })
+    this.load.start()
+  }
+
   createGameplay() {
     this.add.image(WIDTH / 2, HEIGHT / 2, 'gameplayBg').setDisplaySize(WIDTH, HEIGHT)
     this.pauseButton = this.add.image(530, 46, 'gameplayPause').setDisplaySize(44, 44).setInteractive()
@@ -278,6 +321,7 @@ class GameScene extends Phaser.Scene {
     this.toolLabel = this.add.text(WIDTH / 2, 965, 'Add soap with the sponge', { fontFamily: 'Mochiy Pop One', fontSize: '16px', color: '#fff' }).setOrigin(0.5)
     this.coinIcon = this.add.image(46, 66, 'coin').setDisplaySize(38, 38).setDepth(8)
     this.coinText = this.add.text(72, 66, String(this.totalCoins), { fontFamily: 'Mochiy Pop One', fontSize: '19px', color: '#fff', stroke: '#70400b', strokeThickness: 4 }).setOrigin(0, 0.5).setDepth(8)
+    this.coinIconBaseScale = { x: this.coinIcon.scaleX, y: this.coinIcon.scaleY }
     this.cursor = this.add.image(SHOE_X, SHOE_Y, 'sponge').setScale(0.182).setDepth(6).setVisible(false)
     this.updateToolVisuals()
     // Music sits deliberately behind the action; cleaning is the main tactile feedback.
@@ -368,13 +412,14 @@ class GameScene extends Phaser.Scene {
     this.lastPointer = pointer
     const sound = this.tool === 'brush' ? this.cleaningSound : this.tool === 'sponge' ? this.bubblesSound : null
     if (sound && !sound.isPlaying) sound.play()
+    if (this.tool === 'cloth') this.playClothSwipe(true)
     this.scrub(pointer)
   }
 
   moveCleaning(pointer) {
     this.cursor.setPosition(pointer.worldX, pointer.worldY).setVisible(this.state === 'gameplay')
     if (this.isPointerHeld && this.isOnShoe(pointer)) {
-      if (this.tool === 'cloth' && (!this.lastSwipePoint || Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.lastSwipePoint.x, this.lastSwipePoint.y) >= 24)) {
+      if (this.tool === 'cloth' && (!this.lastSwipePoint || Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.lastSwipePoint.x, this.lastSwipePoint.y) >= 12)) {
         this.playClothSwipe()
         this.lastSwipePoint = { x: pointer.worldX, y: pointer.worldY }
       }
@@ -517,7 +562,7 @@ class GameScene extends Phaser.Scene {
           this.coinText.setText(String(this.totalCoins))
           coin.destroy()
           if (index % 4 === 0 || index === amount - 1) {
-            this.tweens.add({ targets: [this.coinIcon, this.coinText], scaleX: 1.22, scaleY: 1.22, duration: 110, yoyo: true })
+            this.pulseWallet()
           }
         },
       })
@@ -535,10 +580,18 @@ class GameScene extends Phaser.Scene {
     })
   }
 
-  playClothSwipe() {
-    if (this.time.now - this.lastClothSfxAt < 85) return
+  pulseWallet() {
+    this.tweens.killTweensOf([this.coinIcon, this.coinText])
+    this.coinIcon.setScale(this.coinIconBaseScale.x, this.coinIconBaseScale.y)
+    this.coinText.setScale(1)
+    this.tweens.add({ targets: this.coinIcon, scaleX: this.coinIconBaseScale.x * 1.14, scaleY: this.coinIconBaseScale.y * 1.14, duration: 100, yoyo: true })
+    this.tweens.add({ targets: this.coinText, scaleX: 1.14, scaleY: 1.14, duration: 100, yoyo: true })
+  }
+
+  playClothSwipe(force = false) {
+    if (!force && this.time.now - this.lastClothSfxAt < 70) return
     this.lastClothSfxAt = this.time.now
-    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 1 })
+    if (this.soundEnabled) this.sound.play('clothSfx', { volume: 1, rate: 1.08 })
   }
 
   eraseLayer(texture, x, y, radius, previous) {
